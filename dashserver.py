@@ -6,28 +6,22 @@ import dash_html_components as html
 import pandas as pd
 import geopandas as gpd
 
-from taxis_data import yellow_taxis
+external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
-app = dash.Dash()
+app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 app.layout = html.Div(children=[
-    dcc.Input(id = 'input', value = 'Enter something', type = 'text'),
+    dcc.Input(id = 'input_origin', value = 'Origin ID', type = 'text'),
+    dcc.Input(id = 'input_destination', value = 'Destination ID', type = 'text'),
     html.Div(id = 'output-graph')
     ])
 
-@app.callback(
-    Output(component_id = 'output-graph', component_property = 'children'),
-    [Input(component_id = 'input', component_property = 'value')]
-)
-
 # FUNCTIONS
 
-def mean_duration_each_hour(trip_time,origin_id,destination_id):
-    if !origin_id :
-        origin_id = 1
-    if !destination_id :
-        destination_id = 1
 
+from taxis_data import yellow_taxis,taxi_zones
+
+def mean_duration_each_hour(trip_time, origin_id = 1, destination_id = 1):
     #Now we are going to analyse the mean time for each hour of the day that we can spend in a fixed trip
     trip_time = trip_time.loc[:,['start_time','PULocationID','DOLocationID','duration']]
     #We select one trip
@@ -40,18 +34,37 @@ def mean_duration_each_hour(trip_time,origin_id,destination_id):
 
     mean_duration = []
 
-    for i in range(0,23):
+    for i in range(0,24):
         df = trip_time.loc[trip_time['start_time'] == i]
         mean_duration.append(df['duration'].mean())
 
     return pd.DataFrame({'mean_duration': mean_duration})
 
+
+@app.callback(
+    Output(component_id = 'output-graph', component_property = 'children'),
+    [Input(component_id = 'input_origin', component_property = 'value'),Input(component_id = 'input_destination', component_property = 'value')]
+)
+
+
 # UPDATE Graph
 
-def update_graph (input_data):
-    try :
-        origin_id = input_data
-        destination_id = input_data
+def update_graph (input_origin_value,input_destination_value):
+    try:
+        origin_id = int(input_origin_value)
+        if type(origin_id)==int :
+            origin_name = taxi_zones.loc[taxi_zones['LocationID']==float(origin_id)].iloc[0]['zone']
+        else :
+            origin_id = 1
+            origin_name = 'Unknown'
+
+        destination_id = int(input_destination_value)
+        if type(destination_id)==int :
+            destination_name = taxi_zones.loc[taxi_zones['LocationID']==float(destination_id)].iloc[0]['zone']
+        else :
+            destination_id = 1
+            destination_name = 'Unknown'
+
         mean_duration = mean_duration_each_hour(yellow_taxis,origin_id,destination_id)
 
         return dcc.Graph(
@@ -61,12 +74,13 @@ def update_graph (input_data):
                     {'x': mean_duration.index, 'y': mean_duration.mean_duration, 'type': 'bar', 'name': 'Mean_Duration'},
                 ],
                 'layout': {
-                    'title': 'Mean duration of the trip between {} and {}'.format(origin_id,destination_id)
+                    'title': 'Mean duration of the trip between {} and {}'.format(origin_name,destination_name)
                 }
             }
         )
-    except :
-        return "Some error"
+    except:
+        return 'Some error'
+
 
 if __name__ == '__main__' :
     app.run_server(debug=True)

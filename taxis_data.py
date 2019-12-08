@@ -13,3 +13,9 @@ yellow_taxis = yellow_taxis.rename(columns={'tpep_pickup_datetime':'start_time',
 yellow_taxis['duration'] = yellow_taxis.apply(add_travel_time, axis=1)
 
 print(yellow_taxis.head())
+
+# Read location ID regions
+taxi_zones = gpd.read_file("../taxi_zones/taxi_zones.shp")
+taxi_zones = taxi_zones.loc[:,['location_i','zone', 'geometry']].rename(columns={"location_i": "LocationID"}).dissolve(by='LocationID').reset_index()
+
+print(taxi_zones.head())
