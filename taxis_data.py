@@ -4,6 +4,9 @@ import geopandas as gpd
 #If we only want one month
 yellow_taxis = pd.read_csv('../NYCYellowTaxiData/2018/yellow_tripdata_2018-02.csv')
 
+#We reduce sample size to improve debugging speed
+yellow_taxis = yellow_taxis.sample(n=10000)
+
 from datetime import datetime
 def add_travel_time(row) :
     time = (datetime.strptime(row["finish_time"], '%Y-%m-%d %H:%M:%S') - datetime.strptime(row["start_time"], '%Y-%m-%d %H:%M:%S')).total_seconds()

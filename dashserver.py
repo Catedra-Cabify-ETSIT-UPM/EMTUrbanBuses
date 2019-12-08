@@ -73,9 +73,15 @@ def update_graph (input_origin_value,input_destination_value):
                 'data': [
                     {'x': mean_duration.index, 'y': mean_duration.mean_duration, 'type': 'bar', 'name': 'Mean_Duration'},
                 ],
-                'layout': {
-                    'title': 'Mean duration of the trip between {} and {}'.format(origin_name,destination_name)
-                }
+                'layout': dict(
+                    title = 'Mean duration of the trip between {} and {}'.format(origin_name,destination_name),
+                    xaxis={
+                        'title': 'Hour of the day'
+                    },
+                    yaxis={
+                        'title': 'Duration of the trip in minutes'
+                    }
+                )
             }
         )
     except:
