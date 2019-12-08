@@ -18,8 +18,11 @@ app.layout = html.Div(children=[
 
 # FUNCTIONS
 
+yellow_taxis = pd.read_csv('../NYCYellowTaxiData/2018/yellow_tripdata_2018-02-duration.csv')
 
-from taxis_data import yellow_taxis,taxi_zones
+# Read location ID regions
+taxi_zones = gpd.read_file("../taxi_zones/taxi_zones.shp")
+taxi_zones = taxi_zones.loc[:,['location_i','zone', 'geometry']].rename(columns={"location_i": "LocationID"}).dissolve(by='LocationID').reset_index()
 
 def mean_duration_each_hour(trip_time, origin_id = 1, destination_id = 1):
     #Now we are going to analyse the mean time for each hour of the day that we can spend in a fixed trip
