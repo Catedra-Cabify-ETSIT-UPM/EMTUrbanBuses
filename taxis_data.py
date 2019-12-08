@@ -2,7 +2,7 @@ import pandas as pd
 import geopandas as gpd
 
 #If we only want one month
-yellow_taxis = pd.read_csv('../NYCYellowTaxiData/2019/yellow_tripdata_2019-01.csv')
+yellow_taxis = pd.read_csv('../NYCYellowTaxiData/2018/yellow_tripdata_2018-02.csv')
 
 from datetime import datetime
 def add_travel_time(row) :
