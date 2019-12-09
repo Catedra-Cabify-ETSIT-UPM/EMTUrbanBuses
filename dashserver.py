@@ -6,6 +6,8 @@ import dash_html_components as html
 import pandas as pd
 import geopandas as gpd
 
+import calendar as calendar
+
 #We setup the app
 app = dash.Dash(__name__)
 
@@ -30,6 +32,19 @@ app.layout = html.Div(className = '', children = [
         html.Span('Destination ID: ', className = 'tag is-light is-large'),
         dcc.Input(className = "input is-primary", placeholder = 'Enter Destination ID', id = 'input_destination', value = '', type = 'text'),
         html.Div(id = 'output-graph', className = 'box')
+    ]),
+
+    html.Div(className = 'box', children = [
+        html.H1('Number of pick ups for each day of the month for two given locations',className = 'title is-3'),
+        html.Span('Location 1: ', className = 'tag is-light is-large'),
+        dcc.Input(className = "input is-primary", placeholder = 'Enter Location 1 ID', id = 'input_loc1', value = '', type = 'text'),
+        html.Span('Location 2: ', className = 'tag is-light is-large'),
+        dcc.Input(className = "input is-primary", placeholder = 'Enter Location 2 ID', id = 'input_loc2', value = '', type = 'text'),
+        html.Span('Year of Interest: ', className = 'tag is-light is-large'),
+        dcc.Input(className = "input is-primary", placeholder = 'Enter Year of Interest', id = 'input_year', value = '', type = 'text'),
+        html.Span('Month of Interest: ', className = 'tag is-light is-large'),
+        dcc.Input(className = "input is-primary", placeholder = 'Enter Month of Interest', id = 'input_month', value = '', type = 'text'),
+        html.Div(id = 'output-graph2', className = 'box')
     ])
 
 ])
@@ -64,12 +79,34 @@ def mean_duration_each_hour(trip_time, origin_id = 1, destination_id = 1):
 
     return pd.DataFrame({'mean_duration': mean_duration})
 
+#Pickups for each location each day of the month
+def pickups_month(time_pickups, loc1_id, loc2_id, year, month) :
+    #We addapt the data to plot the pick ups in East Village and the JFK Airport over 2018.
+    time_pickups = time_pickups.loc[:,['start_time','PULocationID']].rename(columns={'start_time':'date'})
+    time_pickups['date'] = pd.to_datetime(time_pickups['date'])
+
+    #We delete the incorrect dates from the data and the hour information(we want to group it by days)
+    time_pickups = time_pickups.loc[(time_pickups['date'].dt.year == year) & (time_pickups['date'].dt.month == month)]
+    time_pickups['date'] = time_pickups['date'].dt.day
+
+
+    #We get the numbers of pickups per day
+    time_pickups_loc1 = time_pickups.loc[time_pickups['PULocationID']==float(loc1_id)]['date'].value_counts()
+    time_pickups_loc2 = time_pickups.loc[time_pickups['PULocationID']==float(loc2_id)]['date'].value_counts()
+
+    time_pickups_final = pd.DataFrame({'loc1_pus': time_pickups_loc1,'loc2_pus':time_pickups_loc2, 'date':time_pickups_loc1.index}).set_index('date').sort_values(by ='date' )
+
+    return time_pickups_final
+
+
 
 #CALLBACK 1
 @app.callback(
     Output(component_id = 'output-location_name', component_property = 'children'),
     [Input(component_id = 'input_location_id', component_property = 'value')]
 )
+
+
 
 #UPDATE Location Name
 def update_location_name (input_location_id) :
@@ -106,7 +143,7 @@ def update_mean_duration_graph (input_origin_value,input_destination_value):
         mean_duration = mean_duration_each_hour(yellow_taxis,origin_id,destination_id)
 
         return dcc.Graph(
-            id = 'example-graph',
+            id = 'graph1',
             figure = {
                 'data': [
                     {'x': mean_duration.index, 'y': mean_duration.mean_duration, 'type': 'bar', 'name': 'Mean_Duration'},
@@ -124,6 +161,61 @@ def update_mean_duration_graph (input_origin_value,input_destination_value):
         )
     except:
         return 'Please use integer values for the location IDs'
+
+#CALLBACK 3
+@app.callback(
+    Output(component_id = 'output-graph2', component_property = 'children'),
+    [
+        Input(component_id = 'input_loc1', component_property = 'value'),
+        Input(component_id = 'input_loc2', component_property = 'value'),
+        Input(component_id = 'input_year', component_property = 'value'),
+        Input(component_id = 'input_month', component_property = 'value')
+    ]
+)
+
+def update_pickups_month_graph (input_loc1_value,input_loc2_value,input_year_value,input_month_value) :
+    try:
+        year = int(input_year_value)
+        month = int(input_month_value)
+        month_name = calendar.month_name[month]
+
+        loc1_id = int(input_loc1_value)
+        if type(loc1_id)==int :
+            loc1_name = taxi_zones.loc[taxi_zones['LocationID']==float(loc1_id)].iloc[0]['zone']
+        else :
+            loc1_id = 1
+            loc1_name = 'Unknown'
+
+        loc2_id = int(input_loc2_value)
+        if type(loc2_id)==int :
+            loc2_name = taxi_zones.loc[taxi_zones['LocationID']==float(loc2_id)].iloc[0]['zone']
+        else :
+            loc2_id = 1
+            loc2_name = 'Unknown'
+
+        time_pickups = pickups_month(yellow_taxis,loc1_id,loc2_id,year,month)
+
+        return dcc.Graph(
+            id = 'graph2',
+            figure = {
+                'data': [
+                    {'x': time_pickups.index, 'y': time_pickups.loc1_pus, 'mode': 'lines+markers', 'name': '{}'.format(loc1_name)},
+                    {'x': time_pickups.index, 'y': time_pickups.loc2_pus, 'mode': 'lines+markers', 'name': '{}'.format(loc2_name)}
+                ],
+                'layout': dict(
+                    title = '{}-{} | Pickups in {} and {}'.format(month_name,year,loc1_name,loc2_name),
+                    xaxis={
+                        'title': 'Day of {}'.format(month_name)
+                    },
+                    yaxis={
+                        'title': 'Number of pickups'
+                    }
+                )
+            }
+        )
+    except:
+        return 'Please use integer values for the location IDs and the dates settings'
+
 
 
 #START THE SERVER
