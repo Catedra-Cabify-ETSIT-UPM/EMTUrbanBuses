@@ -1,10 +1,10 @@
 index_string = '''
 <!DOCTYPE html>
 <html class = "">
-    
+
     <head>
         {%metas%}
-        <title>NYC TAXI DATA</title>
+        <title>EMT BUSES</title>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.8.0/css/bulma.min.css">
         <script defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
         <link href='https://fonts.googleapis.com/css?family=Megrim' rel='stylesheet'>
@@ -21,27 +21,27 @@ index_string = '''
         {%favicon%}
         {%css%}
     </head>
-    
+
     <body class="body">
-    
+
         <nav class="navbar navlogo" role="navigation" aria-label="main navigation">
           <div class="navbar-brand">
-            <p class="navbar-item logo1">NYC TAXI DATA VISUALIZATION</p>
+            <p class="navbar-item logo1">EMT BUSES</p>
           </div>
         </nav>
-        
+
         <section class="hero"
             {%app_entry%}
         </section>
-        
+
         <footer class="footer hero has-text-centered">
                 <a class='subtitle is-4 is-primary' href="https://github.com/Catedra-Cabify-ETSIT-UPM">CÁTEDRA CABIFY ETSIT UPM</a>
                 {%config%}
                 {%scripts%}
                 {%renderer%}
         </footer>
-        
+
     </body>
-    
+
 </html>
 '''
