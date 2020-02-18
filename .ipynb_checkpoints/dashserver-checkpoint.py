@@ -3,10 +3,22 @@ from dash.dependencies import Input, Output
 import dash_core_components as dcc
 import dash_html_components as html
 
+import plotly.graph_objects as go
+
+import requests
+
 import pandas as pd
 import geopandas as gpd
 
-import calendar as calendar
+from shapely.geometry import shape
+from shapely.geometry import Point, LineString
+from shapely import wkt
+import fiona
+
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+import json
 
 #We setup the app
 app = dash.Dash(__name__)
@@ -19,204 +31,222 @@ app.index_string = index_string
 app.layout = html.Div(className = '', children = [
 
     html.Div(className = 'box', children = [
-        html.H1('Location ID to Name translator',className = 'title is-3'),
-        html.Span('Location ID: ', className = 'tag is-light is-large'),
-        dcc.Input(className = "input is-primary", placeholder = 'Enter Location ID', id = 'input_location_id', value = '', type = 'text'),
-        html.Div(id = 'output-location_name', className = 'box')
+        html.H1('Mapa de lineas y paradas EMT',className = 'title is-3'),
+        html.Iframe(id='map',srcDoc=open('M6Data/routes_stops.html','r').read(),width='100%',height='600')
     ]),
 
     html.Div(className = 'box', children = [
-        html.H1('Mean duration of the trip between two given locations',className = 'title is-3'),
-        html.Span('Origin ID: ', className = 'tag is-light is-large'),
-        dcc.Input(className = "input is-primary", placeholder = 'Enter Origin ID', id = 'input_origin', value = '', type = 'text'),
-        html.Span('Destination ID: ', className = 'tag is-light is-large'),
-        dcc.Input(className = "input is-primary", placeholder = 'Enter Destination ID', id = 'input_destination', value = '', type = 'text'),
-        html.Div(id = 'output-graph', className = 'box')
-    ]),
-
-    html.Div(className = 'box', children = [
-        html.H1('Number of pick ups for each day of the month for two given locations',className = 'title is-3'),
-        html.Span('Location 1: ', className = 'tag is-light is-large'),
-        dcc.Input(className = "input is-primary", placeholder = 'Enter Location 1 ID', id = 'input_loc1', value = '', type = 'text'),
-        html.Span('Location 2: ', className = 'tag is-light is-large'),
-        dcc.Input(className = "input is-primary", placeholder = 'Enter Location 2 ID', id = 'input_loc2', value = '', type = 'text'),
-        html.Span('Year of Interest: ', className = 'tag is-light is-large'),
-        dcc.Input(className = "input is-primary", placeholder = 'Enter Year of Interest', id = 'input_year', value = '', type = 'text'),
-        html.Span('Month of Interest: ', className = 'tag is-light is-large'),
-        dcc.Input(className = "input is-primary", placeholder = 'Enter Month of Interest', id = 'input_month', value = '', type = 'text'),
-        html.Div(id = 'output-graph2', className = 'box')
+        html.H1('Seguimiento de ubicación de buses de una línea deseada',className = 'title is-3'),
+        html.Span('Line ID: ', className = 'tag is-light is-large'),
+        dcc.Input(className = "input is-primary", placeholder = 'Introduce linea deseada', id = 'input_lineId', value = '', type = 'text'),
+        html.Div(id='live-update-graph'),
+        dcc.Interval(
+            id='interval-component',
+            interval=3*1000, # in milliseconds
+            n_intervals=0
+        )
     ])
+
+
 
 ])
 
-#WE READ THE DATASETS OF INTEREST
-#Yellow taxis dataset
-yellow_taxis = pd.read_csv('../flash/NYCTaxiData/yellow_taxi/2018/yellow_tripdata_2018-02-duration.csv')
+# CARGAMOS LOS DATOS
+stops = gpd.read_file('M6Data/stops.json')
+route_lines = gpd.read_file('M6Data/route_lines.json')
+with open('M6Data/line_stops_dict.json', 'r') as f:
+    line_stops_dict = json.load(f)
 
-#Locations dataset
-taxi_zones = gpd.read_file("../taxi_zones/taxi_zones.shp")
-taxi_zones = taxi_zones.loc[:,['location_i','zone', 'geometry']].rename(columns={"location_i": "LocationID"}).dissolve(by='LocationID').reset_index()
+# API FUNCTIONS
+def get_access_token(email,password) :
 
-#FUNCTIONS
+    response = requests.get(
+        'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
+        headers={
+            'email':email,
+            'password':password
+        },
+        timeout=5
+    )
 
-#Mean duration of the trip between two locations for each hour
-def mean_duration_each_hour(trip_time, origin_id = 1, destination_id = 1):
-    #Now we are going to analyse the mean time for each hour of the day that we can spend in a fixed trip
-    trip_time = trip_time.loc[:,['start_time','PULocationID','DOLocationID','duration']]
-    #We select one trip
-    trip_time = trip_time.loc[(trip_time['PULocationID']==origin_id) & (trip_time['DOLocationID']==destination_id)]
-    #And we get only the data of interest
-    trip_time = trip_time.loc[:,['start_time','duration']]
-    #Nos quedamos solo con la hora del dia
-    trip_time['start_time'] = pd.to_datetime(trip_time['start_time'])
-    trip_time['start_time'] = trip_time['start_time'].dt.hour
+    json_response = response.json()
+    accessToken = json_response['data'][0]['accessToken']
+    return accessToken
 
-    mean_duration = []
+def get_stops_of_line(lineId,direction,accessToken) :
+    from shapely.geometry import shape
 
-    for i in range(0,24):
-        df = trip_time.loc[trip_time['start_time'] == i]
-        mean_duration.append(df['duration'].mean())
+    response = requests.get(
+        'https://openapi.emtmadrid.es/v2/transport/busemtmad/lines/{}/stops/{}/'.format(lineId,direction),
+        headers = {'accessToken': accessToken},
+        timeout = 5
+    )
 
-    return pd.DataFrame({'mean_duration': mean_duration})
+    stops_data = pd.DataFrame(response.json()['data'][0]['stops'])
+    stops_data['geometry'] = [shape(i) for i in stops_data['geometry']]
+    stops_data = gpd.GeoDataFrame(stops_data).set_geometry('geometry')
+    line_stops = stops_data[['stop','name','postalAddress','pmv','dataLine','geometry']]
+    return line_stops
 
-#Pickups for each location each day of the month
-def pickups_month(time_pickups, loc1_id, loc2_id, year, month) :
-    #We addapt the data to plot the pick ups in East Village and the JFK Airport over 2018.
-    time_pickups = time_pickups.loc[:,['start_time','PULocationID']].rename(columns={'start_time':'date'})
-    time_pickups['date'] = pd.to_datetime(time_pickups['date'])
+def get_arrival_times(lineId,stopId,accessToken) :
+    body = {
+        'cultureInfo': 'ES',
+        'Text_StopRequired_YN': 'Y',
+        'Text_EstimationsRequired_YN': 'Y',
+        'Text_IncidencesRequired_YN': 'N',
+        'DateTime_Referenced_Incidencies_YYYYMMDD':'20200130'
+    }
+    response = requests.post(
+        'https://openapi.emtmadrid.es/v2/transport/busemtmad/stops/{}/arrives/{}/'.format(stopId,lineId),
+        data = json.dumps(body),
+        headers = {
+            'accessToken': accessToken,
+            'Content-Type': 'application/json'
+        },
+        timeout = 5
+    )
+    response_json = response.json()
+    arrival_data = response_json['data'][0]['Arrive']
+    stop_coords = Point(response_json['data'][0]['StopInfo'][0]['geometry']['coordinates'])
+    return [arrival_data,stop_coords]
 
-    #We delete the incorrect dates from the data and the hour information(we want to group it by days)
-    time_pickups = time_pickups.loc[(time_pickups['date'].dt.year == year) & (time_pickups['date'].dt.month == month)]
-    time_pickups['date'] = time_pickups['date'].dt.day
+# FUNCTIONS
+def point_by_distance_on_line (line, line_lenght, distance, origin_point) :
+    normalized_distance = line.project(origin_point,normalized=True) - distance/line_lenght
+    interpolated_point = line.interpolate(normalized_distance,normalized=True)
+    return Point(interpolated_point.x,interpolated_point.y)
 
+def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,accessToken) :
+    line1_geom = line1['geometry']
+    line1_length = line1['dist']
+    line2_geom = line2['geometry']
+    line2_length = line2['dist']
 
-    #We get the numbers of pickups per day
-    time_pickups_loc1 = time_pickups.loc[time_pickups['PULocationID']==float(loc1_id)]['date'].value_counts()
-    time_pickups_loc2 = time_pickups.loc[time_pickups['PULocationID']==float(loc2_id)]['date'].value_counts()
+    keys = ['bus','line','stop','isHead','destination','deviation','estimateArrive','DistanceBus']
 
-    time_pickups_final = pd.DataFrame({'loc1_pus': time_pickups_loc1,'loc2_pus':time_pickups_loc2, 'date':time_pickups_loc1.index}).set_index('date').sort_values(by ='date' )
+    stop_codes = stops_dir1 + stops_dir2
 
-    return time_pickups_final
-
-
-
-#CALLBACK 1
-@app.callback(
-    Output(component_id = 'output-location_name', component_property = 'children'),
-    [Input(component_id = 'input_location_id', component_property = 'value')]
-)
-
-
-
-#UPDATE Location Name
-def update_location_name (input_location_id) :
-    try:
-        origin_id = int(input_location_id)
-        return 'The location with ID {} is: {}'.format(input_location_id,taxi_zones.loc[taxi_zones['LocationID']==float(origin_id)].iloc[0]['zone'])
-    except:
-        return 'Please use integer values for the location IDs'
-
-
-#CALLBACK 2
-@app.callback(
-    Output(component_id = 'output-graph', component_property = 'children'),
-    [Input(component_id = 'input_origin', component_property = 'value'),Input(component_id = 'input_destination', component_property = 'value')]
-)
-
-#Update Mean Duration of the Trip Graph
-def update_mean_duration_graph (input_origin_value,input_destination_value):
-    try:
-        origin_id = int(input_origin_value)
-        if type(origin_id)==int :
-            origin_name = taxi_zones.loc[taxi_zones['LocationID']==float(origin_id)].iloc[0]['zone']
-        else :
-            origin_id = 1
-            origin_name = 'Unknown'
-
-        destination_id = int(input_destination_value)
-        if type(destination_id)==int :
-            destination_name = taxi_zones.loc[taxi_zones['LocationID']==float(destination_id)].iloc[0]['zone']
-        else :
-            destination_id = 1
-            destination_name = 'Unknown'
-
-        mean_duration = mean_duration_each_hour(yellow_taxis,origin_id,destination_id)
-
-        return dcc.Graph(
-            id = 'graph1',
-            figure = {
-                'data': [
-                    {'x': mean_duration.index, 'y': mean_duration.mean_duration, 'type': 'bar', 'name': 'Mean_Duration'},
-                ],
-                'layout': dict(
-                    title = 'Mean duration of the trip between {} and {}'.format(origin_name,destination_name),
-                    xaxis={
-                        'title': 'Hour of the day'
-                    },
-                    yaxis={
-                        'title': 'Duration of the trip in minutes'
-                    }
+    async def get_data_asynchronous() :
+        row_list = []
+        points_list = []
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            loop = asyncio.get_event_loop()
+            tasks = [
+                loop.run_in_executor(
+                    executor,
+                    get_arrival_times,
+                    *(lineId,stopId,accessToken)
                 )
-            }
+                for stopId in stop_codes
+            ]
+            for arrival_data in await asyncio.gather(*tasks) :
+                arrival_times = arrival_data[0]
+                stop_coords = arrival_data[1]
+                for bus in arrival_times :
+                    points_list.append(point_by_distance_on_line(line1_geom,line1_length,bus['DistanceBus']/1000,stop_coords))
+                    values = [
+                        bus['bus'],
+                        bus['line'],
+                        bus['stop'],
+                        bus['isHead'],
+                        bus['destination'],
+                        bus['deviation'],
+                        bus['estimateArrive'],
+                        bus['DistanceBus']
+                     ]
+                    row_list.append(dict(zip(keys, values)))
+        return [row_list,points_list]
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    future = asyncio.ensure_future(get_data_asynchronous())
+    loop.run_until_complete(future)
+
+    row_list = future.result()[0]
+    points_list = future.result()[1]
+
+    buses_gdf = pd.DataFrame(row_list, columns=keys)
+    buses_gdf['geometry'] = points_list
+
+    frames = []
+    for busId in buses_gdf['bus'].unique() :
+        buses_gdf_reduced = buses_gdf.loc[(buses_gdf['bus']==busId)]
+        frames.append(buses_gdf_reduced.loc[buses_gdf_reduced['DistanceBus']==buses_gdf_reduced['DistanceBus'].min()])
+
+    buses_gdf_unique = pd.concat(frames)
+
+    return gpd.GeoDataFrame(buses_gdf_unique,crs=fiona.crs.from_epsg(4326),geometry='geometry')
+
+# INICIAMOS SESION EN LA API DE LA EMT
+from api_credentials import email,password
+accessToken = get_access_token(email,password)
+
+# CALLBACKS
+
+# CALLBACK 1 - Live Graph of Line
+# Multiple components can update everytime interval gets fired.
+@app.callback(Output(component_id = 'live-update-graph',component_property = 'children'),
+              [Input(component_id = 'input_lineId',component_property = 'value'),
+              Input(component_id = 'interval-component',component_property = 'n_intervals')])
+def update_graph_live(input_lineId_value,n_intervals):
+    try:
+        lineId = input_lineId_value
+
+        # Obtenemos los datos de las paradas pertenecientes a la linea de interes
+        stops_dir1 = line_stops_dict[lineId]['1']['stops']
+        stops_dir2 = line_stops_dict[lineId]['2']['stops']
+        
+        line1 = route_lines.loc[(route_lines['line_id']==lineId)&(route_lines['direction']=='1')]
+        line2 = route_lines.loc[(route_lines['line_id']==lineId)&(route_lines['direction']=='2')]
+        center = line1['geometry'].centroid
+        center_x = float(center.x)
+        center_y = float(center.y)
+        
+        
+        # Obtenemos datos de llegada de esa línea
+        arrival_time_data = get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,accessToken)
+
+        mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scattermapbox(
+            lat=arrival_time_data['geometry'].y,
+            lon=arrival_time_data['geometry'].x,
+            mode='markers',
+            marker=go.scattermapbox.Marker(
+                size=10,
+                color='rgb(255, 0, 0)',
+                opacity=0.7
+            ),
+            text=arrival_time_data['bus'],
+            hoverinfo='text'
+        ))
+        
+        fig.update_layout(
+            title='Posición en tiempo real de los buses de la línea {}'.format(lineId),
+            autosize=True,
+            hovermode='closest',
+            showlegend=False,
+            mapbox=dict(
+                accesstoken=mapbox_access_token,
+                bearing=0,
+                center=dict(
+                    lat=center_y,
+                    lon=center_x
+                ),
+                pitch=0,
+                zoom=12,
+                style='mapbox://styles/alejp1998/ck6qp34qz52ul1ipfio20oe2w'
+            )
+        )
+        
+        return dcc.Graph(
+            id = 'graph',
+            figure = fig
         )
     except:
-        return 'Please use integer values for the location IDs'
-
-#CALLBACK 3
-@app.callback(
-    Output(component_id = 'output-graph2', component_property = 'children'),
-    [
-        Input(component_id = 'input_loc1', component_property = 'value'),
-        Input(component_id = 'input_loc2', component_property = 'value'),
-        Input(component_id = 'input_year', component_property = 'value'),
-        Input(component_id = 'input_month', component_property = 'value')
-    ]
-)
-
-def update_pickups_month_graph (input_loc1_value,input_loc2_value,input_year_value,input_month_value) :
-    try:
-        year = int(input_year_value)
-        month = int(input_month_value)
-        month_name = calendar.month_name[month]
-
-        loc1_id = int(input_loc1_value)
-        if type(loc1_id)==int :
-            loc1_name = taxi_zones.loc[taxi_zones['LocationID']==float(loc1_id)].iloc[0]['zone']
-        else :
-            loc1_id = 1
-            loc1_name = 'Unknown'
-
-        loc2_id = int(input_loc2_value)
-        if type(loc2_id)==int :
-            loc2_name = taxi_zones.loc[taxi_zones['LocationID']==float(loc2_id)].iloc[0]['zone']
-        else :
-            loc2_id = 1
-            loc2_name = 'Unknown'
-
-        time_pickups = pickups_month(yellow_taxis,loc1_id,loc2_id,year,month)
-
-        return dcc.Graph(
-            id = 'graph2',
-            figure = {
-                'data': [
-                    {'x': time_pickups.index, 'y': time_pickups.loc1_pus, 'mode': 'lines+markers', 'name': '{}'.format(loc1_name)},
-                    {'x': time_pickups.index, 'y': time_pickups.loc2_pus, 'mode': 'lines+markers', 'name': '{}'.format(loc2_name)}
-                ],
-                'layout': dict(
-                    title = '{}-{} | Pickups in {} and {}'.format(month_name,year,loc1_name,loc2_name),
-                    xaxis={
-                        'title': 'Day of {}'.format(month_name)
-                    },
-                    yaxis={
-                        'title': 'Number of pickups'
-                    }
-                )
-            }
-        )
-    except:
-        return 'Please use integer values for the location IDs and the dates settings'
-
-
+        return 'Por favor introduce un ID de línea válido'
 
 #START THE SERVER
 if __name__ == '__main__' :
