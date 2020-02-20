@@ -3,13 +3,15 @@ from dash.dependencies import Input, Output
 import dash_core_components as dcc
 import dash_html_components as html
 
-import plotly.graph_objects as go
-
 import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 
 import pandas as pd
 import geopandas as gpd
+import json
 
+import plotly.graph_objects as go
 from shapely.geometry import shape
 from shapely.geometry import Point, LineString
 from shapely import wkt
@@ -18,7 +20,7 @@ import fiona
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
-import json
+
 
 #We setup the app
 app = dash.Dash(__name__)
@@ -47,8 +49,6 @@ app.layout = html.Div(className = '', children = [
         )
     ])
 
-
-
 ])
 
 # CARGAMOS LOS DATOS
@@ -58,9 +58,35 @@ with open('M6Data/line_stops_dict.json', 'r') as f:
     line_stops_dict = json.load(f)
 
 # API FUNCTIONS
-def get_access_token(email,password) :
+def requests_retry_session(retries=3,backoff_factor=0.3,status_forcelist=(500, 502, 504),session=None):
+    '''
+    Function to ensure we get a good response for the request
+    '''
+    session = session or requests.Session()
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=status_forcelist,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
 
-    response = requests.get(
+def get_access_token(email,password) :
+    '''
+    Returns the access token of the EMT Madrid API
+        
+        Parameters
+        ----------
+        email : string
+            The email of the account
+        password : string
+            Password of the account
+    '''
+    response = requests_retry_session().get(
         'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
         headers={
             'email':email,
@@ -74,21 +100,48 @@ def get_access_token(email,password) :
     return accessToken
 
 def get_stops_of_line(lineId,direction,accessToken) :
+    """
+    Returns the list of stops for the line and direction desired
+
+        Parameters
+        ----------
+        lineId : string
+            The line id
+        direction : string
+            The direction (1 or 2)
+        accessToken: string
+            The accessToken obtained in the login
+    """
+    
     from shapely.geometry import shape
 
-    response = requests.get(
+    response = requests_retry_session().get(
         'https://openapi.emtmadrid.es/v2/transport/busemtmad/lines/{}/stops/{}/'.format(lineId,direction),
         headers = {'accessToken': accessToken},
         timeout = 5
     )
-
-    stops_data = pd.DataFrame(response.json()['data'][0]['stops'])
+    
+    #We turn the data of the stops from the response into a dataframe
+    stops_data = pd.DataFrame(response.json()['data'][0]['stops'])   
+    #And transform the geometry coordinates into point objects
     stops_data['geometry'] = [shape(i) for i in stops_data['geometry']]
-    stops_data = gpd.GeoDataFrame(stops_data).set_geometry('geometry')
-    line_stops = stops_data[['stop','name','postalAddress','pmv','dataLine','geometry']]
-    return line_stops
+    return stops_data
 
 def get_arrival_times(lineId,stopId,accessToken) :
+    """
+    Returns the arrival data of buses for the desired stop and line
+
+        Parameters
+        ----------
+        lineId : string
+            The line id
+        stopId : string
+            The stop code
+        accessToken: string
+            The accessToken obtained in the login
+    """
+    
+    #We build the body for the request
     body = {
         'cultureInfo': 'ES',
         'Text_StopRequired_YN': 'Y',
@@ -96,7 +149,9 @@ def get_arrival_times(lineId,stopId,accessToken) :
         'Text_IncidencesRequired_YN': 'N',
         'DateTime_Referenced_Incidencies_YYYYMMDD':'20200130'
     }
-    response = requests.post(
+    
+    #And we perform the request
+    response = requests_retry_session().post(
         'https://openapi.emtmadrid.es/v2/transport/busemtmad/stops/{}/arrives/{}/'.format(stopId,lineId),
         data = json.dumps(body),
         headers = {
@@ -105,6 +160,8 @@ def get_arrival_times(lineId,stopId,accessToken) :
         },
         timeout = 5
     )
+    
+    #We turn the data into a json and return the arrival data and the coordinates of the stop that made the call
     response_json = response.json()
     arrival_data = response_json['data'][0]['Arrive']
     stop_coords = Point(response_json['data'][0]['StopInfo'][0]['geometry']['coordinates'])
@@ -112,38 +169,88 @@ def get_arrival_times(lineId,stopId,accessToken) :
 
 # FUNCTIONS
 def point_by_distance_on_line (line, line_lenght, distance, origin_point) :
+    """
+    Returns the coordinates of the bus location
+
+        Parameters
+        ----------
+        line : LineString
+            The line that the bus belongs to
+        line_length : float
+            The length of the line
+        distance : float
+            The distance of the bus to the stop in kilometers
+        origin_point : Point
+            The location of the bus stop
+    """
+    
+    #First we calculate the normalized distance of the bus from the start of the line
+    #by substracting the distance of the bus to the stop to the distance of the stop to the start of the line
+    #which is returned by the project method of the shapely module
     normalized_distance = line.project(origin_point,normalized=True) - distance/line_lenght
+    
+    #Then we get the the coordinates of the point that is at the normalized distance obtained 
+    #before from the start of the line with the interpolate method
     interpolated_point = line.interpolate(normalized_distance,normalized=True)
-    return Point(interpolated_point.x,interpolated_point.y)
+    
+    #And we return the coordinates of the point
+    return (interpolated_point.x,interpolated_point.y)
 
 def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,accessToken) :
+    """
+    Returns the data of all the buses inside the desired line
+
+        Parameters
+        ----------
+        lineId : string
+            The line id
+        line1 : DataFrame row
+            Data about the line in direction 1
+        line2 : DataFrame row
+            Data about the line in direction 2
+        stops_dir1 : list
+            The list of the stops for direction 1
+        stops_dir2 : list
+            The list of the stops for direction 2
+        accessToken: string
+            The accessToken obtained in the login
+    """
+    #We get the LineString object and length from the rows
     line1_geom = line1['geometry']
     line1_length = line1['dist']
     line2_geom = line2['geometry']
     line2_length = line2['dist']
-
+    
+    #The keys for the dataframe that is going to be built
     keys = ['bus','line','stop','isHead','destination','deviation','estimateArrive','DistanceBus']
 
+    #List with all the stops in both directions
     stop_codes = stops_dir1 + stops_dir2
-
+    
+    #Function to perform the requests asynchronously, performing them concurrently would be too slow
     async def get_data_asynchronous() :
         row_list = []
         points_list = []
+        
+        #We set the number of workers that is going to take care about the requests
         with ThreadPoolExecutor(max_workers=10) as executor:
+            #We create a loop object
             loop = asyncio.get_event_loop()
+            #And a list of tasks to be performed by the loop
             tasks = [
                 loop.run_in_executor(
                     executor,
-                    get_arrival_times,
-                    *(lineId,stopId,accessToken)
+                    get_arrival_times, #Function that is gonna be called by the tasks
+                    *(lineId,stopId,accessToken)  #Parameters for the function
                 )
                 for stopId in stop_codes
             ]
+            #And finally we perform the tasks and gather the information returned by them into two lists
             for arrival_data in await asyncio.gather(*tasks) :
                 arrival_times = arrival_data[0]
                 stop_coords = arrival_data[1]
                 for bus in arrival_times :
-                    points_list.append(point_by_distance_on_line(line1_geom,line1_length,bus['DistanceBus']/1000,stop_coords))
+                    points_list.append(Point(point_by_distance_on_line(line1_geom,line1_length,bus['DistanceBus']/1000,stop_coords)))
                     values = [
                         bus['bus'],
                         bus['line'],
@@ -157,59 +264,72 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
                     row_list.append(dict(zip(keys, values)))
         return [row_list,points_list]
     
+    #We declare the loop and call it, then we run it until it is complete
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     future = asyncio.ensure_future(get_data_asynchronous())
     loop.run_until_complete(future)
-
+    
+    #And once it is completed we gather the information returned by it like this
     row_list = future.result()[0]
     points_list = future.result()[1]
-
+    
+    #We create the dataframe of the buses
     buses_gdf = pd.DataFrame(row_list, columns=keys)
     buses_gdf['geometry'] = points_list
-
+    
+    #And then we get only the rows where each bus is closer to a stop (lower DistanceBus attrib)
     frames = []
     for busId in buses_gdf['bus'].unique() :
         buses_gdf_reduced = buses_gdf.loc[(buses_gdf['bus']==busId)]
         frames.append(buses_gdf_reduced.loc[buses_gdf_reduced['DistanceBus']==buses_gdf_reduced['DistanceBus'].min()])
 
     buses_gdf_unique = pd.concat(frames)
-
+    
+    #Finally we return the geodataframe
     return gpd.GeoDataFrame(buses_gdf_unique,crs=fiona.crs.from_epsg(4326),geometry='geometry')
 
 # INICIAMOS SESION EN LA API DE LA EMT
 from api_credentials import email,password
 accessToken = get_access_token(email,password)
+#Tokenoken for the mapbox api
+mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
 
 # CALLBACKS
 
-# CALLBACK 1 - Live Graph of Line
-# Multiple components can update everytime interval gets fired.
+# CALLBACK 1 - Live Graph of Line Buses
 @app.callback(Output(component_id = 'live-update-graph',component_property = 'children'),
               [Input(component_id = 'input_lineId',component_property = 'value'),
               Input(component_id = 'interval-component',component_property = 'n_intervals')])
 def update_graph_live(input_lineId_value,n_intervals):
+    '''
+    Function that updates the graph each x seconds depending on the value of lineId
+    
+        Parameters
+        ---
+        input_lineId_value: string
+            The line whose buses are going to be ploted
+    '''
     try:
         lineId = input_lineId_value
 
-        # Obtenemos los datos de las paradas pertenecientes a la linea de interes
+        #We get the stops of the line from the dict
         stops_dir1 = line_stops_dict[lineId]['1']['stops']
         stops_dir2 = line_stops_dict[lineId]['2']['stops']
-        
+        #And the line rows
         line1 = route_lines.loc[(route_lines['line_id']==lineId)&(route_lines['direction']=='1')]
         line2 = route_lines.loc[(route_lines['line_id']==lineId)&(route_lines['direction']=='2')]
+        #Set the center of the graph to the centroid of the line
         center = line1['geometry'].centroid
         center_x = float(center.x)
         center_y = float(center.y)
         
-        
-        # Obtenemos datos de llegada de esa línea
+        #We obtain the arrival data for the line
         arrival_time_data = get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,accessToken)
-
-        mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
         
+        #We create the figure object
         fig = go.Figure()
-        
+        #Add the traces to the figure
         fig.add_trace(go.Scattermapbox(
             lat=arrival_time_data['geometry'].y,
             lon=arrival_time_data['geometry'].x,
@@ -222,7 +342,7 @@ def update_graph_live(input_lineId_value,n_intervals):
             text=arrival_time_data['bus'],
             hoverinfo='text'
         ))
-        
+        #And set the figure layout
         fig.update_layout(
             title='Posición en tiempo real de los buses de la línea {}'.format(lineId),
             autosize=True,
@@ -240,12 +360,13 @@ def update_graph_live(input_lineId_value,n_intervals):
                 style='mapbox://styles/alejp1998/ck6qp34qz52ul1ipfio20oe2w'
             )
         )
-        
+        #And finally we return the graph element
         return dcc.Graph(
             id = 'graph',
             figure = fig
         )
     except:
+        #If there is an error we ask for a valid line id
         return 'Por favor introduce un ID de línea válido'
 
 #START THE SERVER
