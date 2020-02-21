@@ -1,7 +1,6 @@
-import dash
-from dash.dependencies import Input, Output
 import dash_core_components as dcc
 import dash_html_components as html
+from dash.dependencies import Input, Output
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -20,42 +19,34 @@ import fiona
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
-
-
-#We setup the app
-app = dash.Dash(__name__)
-
-#We import the layout from another file
-from html_layout import index_string
-app.index_string = index_string
-
-#SERVER LAYOUT FOR THE INTERACTIVE ELEMENTS
-app.layout = html.Div(className = '', children = [
-
-    html.Div(className = 'box', children = [
-        html.H1('Mapa de lineas y paradas EMT',className = 'title is-3'),
-        html.Iframe(id='map',srcDoc=open('M6Data/routes_stops.html','r').read(),width='100%',height='600')
-    ]),
-
-    html.Div(className = 'box', children = [
-        html.H1('Seguimiento de ubicación de buses de una línea deseada',className = 'title is-3'),
-        html.Span('Line ID: ', className = 'tag is-light is-large'),
-        dcc.Input(className = "input is-primary", placeholder = 'Introduce linea deseada', id = 'input_lineId', value = '', type = 'text'),
-        html.Div(id='live-update-graph'),
-        dcc.Interval(
-            id='interval-component',
-            interval=3*1000, # in milliseconds
-            n_intervals=0
-        )
-    ])
-
-])
+from app import app
 
 # CARGAMOS LOS DATOS
 stops = gpd.read_file('M6Data/stops.json')
 route_lines = gpd.read_file('M6Data/route_lines.json')
 with open('M6Data/line_stops_dict.json', 'r') as f:
     line_stops_dict = json.load(f)
+
+layout = html.Div(className = '', children = [
+
+    html.Div(className = 'box', children = [
+        html.H1('LIVE POSITION OF BUSES BELONGING TO DESIRED LINE',className = 'title is-3'),
+        html.Span('Line ID: ', className = 'tag is-light is-large'),
+        dcc.Dropdown(
+            id="lineId-select",
+            options=[{"label": i, "value": i} for i in line_stops_dict.keys()],
+            value='1',
+            searchable=True
+        ),
+        html.Div(id='live-update-graph'),
+        dcc.Interval(
+            id='interval-component',
+            interval=5*1000, # in milliseconds
+            n_intervals=0
+        )
+    ])
+    
+])
 
 # API FUNCTIONS
 def requests_retry_session(retries=3,backoff_factor=0.3,status_forcelist=(500, 502, 504),session=None):
@@ -165,7 +156,7 @@ def get_arrival_times(lineId,stopId,accessToken) :
     response_json = response.json()
     arrival_data = response_json['data'][0]['Arrive']
     stop_coords = Point(response_json['data'][0]['StopInfo'][0]['geometry']['coordinates'])
-    return [arrival_data,stop_coords]
+    return [arrival_data,stopId,stop_coords]
 
 # FUNCTIONS
 def point_by_distance_on_line (line, line_lenght, distance, origin_point) :
@@ -248,20 +239,16 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
             #And finally we perform the tasks and gather the information returned by them into two lists
             for arrival_data in await asyncio.gather(*tasks) :
                 arrival_times = arrival_data[0]
-                stop_coords = arrival_data[1]
+                stop_id = arrival_data[1]
+                stop_coords = arrival_data[2]
                 for bus in arrival_times :
-                    points_list.append(Point(point_by_distance_on_line(line1_geom,line1_length,bus['DistanceBus']/1000,stop_coords)))
-                    values = [
-                        bus['bus'],
-                        bus['line'],
-                        bus['stop'],
-                        bus['isHead'],
-                        bus['destination'],
-                        bus['deviation'],
-                        bus['estimateArrive'],
-                        bus['DistanceBus']
-                     ]
+                    values = [bus[key] for key in keys]
                     row_list.append(dict(zip(keys, values)))
+                    #We calculate the bus position depending on the direction it belongs to
+                    if stop_id in stops_dir1 :
+                        points_list.append(Point(point_by_distance_on_line(line1_geom,line1_length,bus['DistanceBus']/1000,stop_coords)))
+                    else :
+                        points_list.append(Point(point_by_distance_on_line(line2_geom,line2_length,bus['DistanceBus']/1000,stop_coords)))
         return [row_list,points_list]
     
     #We declare the loop and call it, then we run it until it is complete
@@ -289,19 +276,19 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
     #Finally we return the geodataframe
     return gpd.GeoDataFrame(buses_gdf_unique,crs=fiona.crs.from_epsg(4326),geometry='geometry')
 
-# INICIAMOS SESION EN LA API DE LA EMT
+# WE LOGIN IN THE EMT API
 from api_credentials import email,password
 accessToken = get_access_token(email,password)
-#Tokenoken for the mapbox api
+#Token for the mapbox api
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
 
 # CALLBACKS
 
 # CALLBACK 1 - Live Graph of Line Buses
 @app.callback(Output(component_id = 'live-update-graph',component_property = 'children'),
-              [Input(component_id = 'input_lineId',component_property = 'value'),
+              [Input(component_id = 'lineId-select',component_property = 'value'),
               Input(component_id = 'interval-component',component_property = 'n_intervals')])
-def update_graph_live(input_lineId_value,n_intervals):
+def update_graph_live(lineId_value,n_intervals):
     '''
     Function that updates the graph each x seconds depending on the value of lineId
     
@@ -311,7 +298,7 @@ def update_graph_live(input_lineId_value,n_intervals):
             The line whose buses are going to be ploted
     '''
     try:
-        lineId = input_lineId_value
+        lineId = lineId_value
 
         #We get the stops of the line from the dict
         stops_dir1 = line_stops_dict[lineId]['1']['stops']
@@ -344,7 +331,7 @@ def update_graph_live(input_lineId_value,n_intervals):
         ))
         #And set the figure layout
         fig.update_layout(
-            title='Posición en tiempo real de los buses de la línea {}'.format(lineId),
+            title='REAL TIME POSITION OF THE BUSES OF LINE {}'.format(lineId),
             autosize=True,
             hovermode='closest',
             showlegend=False,
@@ -367,8 +354,4 @@ def update_graph_live(input_lineId_value,n_intervals):
         )
     except:
         #If there is an error we ask for a valid line id
-        return 'Por favor introduce un ID de línea válido'
-
-#START THE SERVER
-if __name__ == '__main__' :
-    app.run_server(debug=True)
+        return 'Please select a lineId from the list'
