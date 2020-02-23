@@ -19,7 +19,11 @@ import fiona
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
+import datetime
+
 from app import app
+
+import random
 
 # CARGAMOS LOS DATOS
 stops = gpd.read_file('M6Data/stops.json')
@@ -236,6 +240,8 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
                 )
                 for stopId in stop_codes
             ]
+            #We select just half of the tasks to perform randomly
+            tasks = random.sample(tasks, len(tasks)/2)
             #And finally we perform the tasks and gather the information returned by them into two lists
             for arrival_data in await asyncio.gather(*tasks) :
                 arrival_times = arrival_data[0]
@@ -281,6 +287,8 @@ from api_credentials import email,password
 accessToken = get_access_token(email,password)
 #Token for the mapbox api
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
+style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
+style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
 
 # CALLBACKS
 
@@ -314,6 +322,13 @@ def update_graph_live(lineId_value,n_intervals):
         #We obtain the arrival data for the line
         arrival_time_data = get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,accessToken)
         
+        #Style depending on hour
+        now = datetime.datetime.now()
+        if (datetime.time(hour=6, minute=0) <= now.time() <= datetime.time(hour=23, minute=30)) :
+            style = style_day
+        else :
+            style = style_night
+            
         #We create the figure object
         fig = go.Figure()
         #Add the traces to the figure
@@ -332,7 +347,7 @@ def update_graph_live(lineId_value,n_intervals):
         #And set the figure layout
         fig.update_layout(
             title='REAL TIME POSITION OF THE BUSES OF LINE {}'.format(lineId),
-            autosize=True,
+            margin=dict(r=0, l=0, t=0, b=0),
             hovermode='closest',
             showlegend=False,
             mapbox=dict(
@@ -343,8 +358,8 @@ def update_graph_live(lineId_value,n_intervals):
                     lon=center_x
                 ),
                 pitch=0,
-                zoom=12,
-                style='mapbox://styles/alejp1998/ck6qp34qz52ul1ipfio20oe2w'
+                zoom=13,
+                style=style
             )
         )
         #And finally we return the graph element
