@@ -241,7 +241,7 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
                 for stopId in stop_codes
             ]
             #We select just half of the tasks to perform randomly
-            tasks = random.sample(tasks, len(tasks)/2)
+            #tasks = random.sample(tasks, len(tasks)/2)
             #And finally we perform the tasks and gather the information returned by them into two lists
             for arrival_data in await asyncio.gather(*tasks) :
                 arrival_times = arrival_data[0]
