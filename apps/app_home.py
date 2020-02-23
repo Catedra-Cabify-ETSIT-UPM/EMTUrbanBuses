@@ -26,16 +26,14 @@ with open('M6Data/line_stops_dict.json', 'r') as f:
 layout = html.Div(className = '', children = [
 
     html.Div(className = 'box', children = [
-        html.H1('MAP OF STOPS AND ROUTES',className = 'title is-3'),
-        html.Iframe(id='map',srcDoc=open('M6Data/routes_stops.html','r').read(),width='100%',height='600')
-    ]),
-    
-    html.Div(className = 'box', children = [
         html.H1('Desired Lines Map',className = 'title is-3'),
+        html.H2('Blue = From A to B, Red = From B to A',className = 'subtitle is-5'),
+        html.H3('To plot everything, select "All"',className = 'subtitle is-6'),
+        html.Span('Add line Ids: ', className = 'tag is-light is-large'),
         dcc.Dropdown(
             id="lineIds-select",
-            options=[{"label": i, "value": i} for i in line_stops_dict.keys()],
-            value='1',
+            options=[{"label": i, "value": i} for i in list(line_stops_dict.keys()) + ['All']],
+            value='All',
             searchable=True,
             multi=True
         ),
@@ -64,24 +62,39 @@ def update_lines_graph(lineIds_value):
     '''
     try:
         lineIds = lineIds_value
-        stops_of_lines = []
-        for lineId in lineIds :
-            if line_stops_dict[lineId] != None :
-                if line_stops_dict[lineId]['1'] != None :
-                    for stopId in line_stops_dict[lineId]['1']['stops'] :
-                        stops_of_lines.append(stopId)
-                if line_stops_dict[lineId]['2'] != None :
-                    for stopId in line_stops_dict[lineId]['2']['stops'] :
-                        stops_of_lines.append(stopId)
-            
-        
-        stops_of_lines = list(set(stops_of_lines))
-        stops_selected = stops.loc[stops['stop_code'].isin(stops_of_lines)]
-        
+        showAll = False
         if type(lineIds) is list:
-            lines_selected = route_lines.loc[route_lines['line_id'].isin(lineIds)]
+            if 'All' in lineIds :
+                showAll = True
         else :
-            lines_selected = route_lines.loc[route_lines['line_id']==lineIds]
+            if lineIds=='All' :
+                showAll = True
+        
+        if showAll :
+            stops_of_lines = stops['stop_code'].tolist()
+            stops_selected = stops
+            lines_selected = route_lines
+        
+        else: 
+            stops_of_lines = []
+            for lineId in lineIds :
+                if line_stops_dict[lineId] != None :
+                    if line_stops_dict[lineId]['1'] != None :
+                        for stopId in line_stops_dict[lineId]['1']['stops'] :
+                            stops_of_lines.append(stopId)
+                    if line_stops_dict[lineId]['2'] != None :
+                        for stopId in line_stops_dict[lineId]['2']['stops'] :
+                            stops_of_lines.append(stopId)
+
+
+            stops_of_lines = list(set(stops_of_lines))
+            stops_selected = stops.loc[stops['stop_code'].isin(stops_of_lines)]
+
+            if type(lineIds) is list:
+                lines_selected = route_lines.loc[route_lines['line_id'].isin(lineIds)]
+            else :
+                lines_selected = route_lines.loc[route_lines['line_id']==lineIds]
+        
         #We set the center of the map
         center_x = lines_selected.centroid.x.mean()
         center_y = lines_selected.centroid.y.mean()
@@ -110,6 +123,7 @@ def update_lines_graph(lineIds_value):
         #Add lines to the figure
         for index, row in lines_selected.iterrows():
             line = row['geometry']
+            n_paradas = len(line_stops_dict[row['line_id']][row['direction']]['stops'])
             x_coords = []
             y_coords = []
             for coords in list(line.coords) :
@@ -124,11 +138,14 @@ def update_lines_graph(lineIds_value):
                 lat=y_coords,
                 lon=x_coords,
                 mode='lines',
-                line=dict(width=3, color=color)
+                line=dict(width=3, color=color),
+                text='Línea : {}-{}, Nº Paradas : {}'.format(row['line_id'],row['direction'],n_paradas),
+                hoverinfo='text'
             ))
         #And set the figure layout
         fig.update_layout(
             title='LINES AND STOPS SELECTED MAP',
+            height=600,
             margin=dict(r=0, l=0, t=0, b=0),
             hovermode='closest',
             showlegend=False,
@@ -145,10 +162,20 @@ def update_lines_graph(lineIds_value):
             )
         )
         #And finally we return the graph element
-        return dcc.Graph(
-            id = 'graph',
-            figure = fig
-        )
+        if len(stops_of_lines)==0 :
+            return 'Please select one or multiple line ids from the list'
+        else :
+            return [
+                dcc.Graph(
+                    id = 'graph',
+                    figure = fig
+                ),
+                html.H2(
+                    'Number of different stops involved : {}'.format(len(stops_of_lines)),
+                    className = 'subtitle is-5'
+                )
+            ]
+    
     except :
         #If there is an error we ask for a valid line id
         return 'Please select one or multiple line ids from the list'

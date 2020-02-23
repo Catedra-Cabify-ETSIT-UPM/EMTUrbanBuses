@@ -347,6 +347,7 @@ def update_graph_live(lineId_value,n_intervals):
         #And set the figure layout
         fig.update_layout(
             title='REAL TIME POSITION OF THE BUSES OF LINE {}'.format(lineId),
+            height=600,
             margin=dict(r=0, l=0, t=0, b=0),
             hovermode='closest',
             showlegend=False,
