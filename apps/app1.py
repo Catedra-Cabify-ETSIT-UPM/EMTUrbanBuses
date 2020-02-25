@@ -95,34 +95,6 @@ def get_access_token(email,password) :
     accessToken = json_response['data'][0]['accessToken']
     return accessToken
 
-def get_stops_of_line(lineId,direction,accessToken) :
-    """
-    Returns the list of stops for the line and direction desired
-
-        Parameters
-        ----------
-        lineId : string
-            The line id
-        direction : string
-            The direction (1 or 2)
-        accessToken: string
-            The accessToken obtained in the login
-    """
-    
-    from shapely.geometry import shape
-
-    response = requests_retry_session().get(
-        'https://openapi.emtmadrid.es/v2/transport/busemtmad/lines/{}/stops/{}/'.format(lineId,direction),
-        headers = {'accessToken': accessToken},
-        timeout = 5
-    )
-    
-    #We turn the data of the stops from the response into a dataframe
-    stops_data = pd.DataFrame(response.json()['data'][0]['stops'])   
-    #And transform the geometry coordinates into point objects
-    stops_data['geometry'] = [shape(i) for i in stops_data['geometry']]
-    return stops_data
-
 def get_arrival_times(lineId,stopId,accessToken) :
     """
     Returns the arrival data of buses for the desired stop and line
@@ -180,6 +152,7 @@ def haversine(coord1, coord2):
         math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
     
     return 2*R*math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
 def point_by_distance_on_line (line, line_lenght, distance, origin_point) :
     """
     Returns the coordinates of the bus location
