@@ -42,7 +42,7 @@ layout = html.Div(className = '', children = [
             value='1',
             searchable=True
         ),
-        html.Div(id='live-update-graph'),
+        html.Div(className='box',id='live-update-graph'),
         dcc.Interval(
             id='interval-component',
             interval=5*1000, # in milliseconds
@@ -210,6 +210,13 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
         accessToken: string
             The accessToken obtained in the login
     """
+    #For night buses
+    if len(lineId)==3 and lineId[0]=='5' :
+        if lineId[1]=='0' :
+            lineId = 'N'+lineId[2]
+        else :
+            lineId = 'N'+lineId[1:]
+    
     #We get the LineString object and length from the rows
     line1_geom = line1['geometry']
     line1_length = line1['dist']
@@ -217,7 +224,7 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
     line2_length = line2['dist']
     
     #The keys for the dataframe that is going to be built
-    keys = ['bus','line','stop','isHead','destination','deviation','estimateArrive','DistanceBus']
+    keys = ['bus','line','direction','stop','isHead','destination','deviation','estimateArrive','DistanceBus']
 
     #List with all the stops in both directions
     stop_codes = stops_dir1 + stops_dir2
@@ -226,6 +233,7 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
     async def get_data_asynchronous() :
         row_list = []
         points_list = []
+        real_coords_list = []
         
         #We set the number of workers that is going to take care about the requests
         with ThreadPoolExecutor(max_workers=10) as executor:
@@ -248,14 +256,18 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
                 stop_id = arrival_data[1]
                 stop_coords = arrival_data[2]
                 for bus in arrival_times :
-                    values = [bus[key] for key in keys]
-                    row_list.append(dict(zip(keys, values)))
+                    #Real coordinates provided by the API
+                    real_coords_list.append(Point(bus['geometry']['coordinates']))
                     #We calculate the bus position depending on the direction it belongs to
                     if stop_id in stops_dir1 :
+                        bus['direction'] = '1'
                         points_list.append(Point(point_by_distance_on_line(line1_geom,line1_length,bus['DistanceBus']/1000,stop_coords)))
                     else :
+                        bus['direction'] = '2'
                         points_list.append(Point(point_by_distance_on_line(line2_geom,line2_length,bus['DistanceBus']/1000,stop_coords)))
-        return [row_list,points_list]
+                    values = [bus[key] for key in keys]
+                    row_list.append(dict(zip(keys, values)))
+        return [row_list,points_list,real_coords_list]
     
     #We declare the loop and call it, then we run it until it is complete
     loop = asyncio.new_event_loop()
@@ -264,12 +276,22 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
     loop.run_until_complete(future)
     
     #And once it is completed we gather the information returned by it like this
-    row_list = future.result()[0]
-    points_list = future.result()[1]
+    future_result = future.result()
+    row_list = future_result[0]
+    points_list = future_result[1]
+    real_coords_list = future_result[2]
     
     #We create the dataframe of the buses
     buses_gdf = pd.DataFrame(row_list, columns=keys)
-    buses_gdf['geometry'] = points_list
+    final_coords_list = []
+    #Use the real coords if they exist
+    for i in range(0,len(points_list)) :
+        if (real_coords_list[i].y!=0)&(real_coords_list[i].x!=0) :
+            final_coords_list.append(real_coords_list[i])
+        else :
+            final_coords_list.append(points_list[i])
+    buses_gdf['geometry'] = final_coords_list
+    
     
     #And then we get only the rows where each bus is closer to a stop (lower DistanceBus attrib)
     frames = []
@@ -280,11 +302,11 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
     buses_gdf_unique = pd.concat(frames)
     
     #Finally we return the geodataframe
-    return gpd.GeoDataFrame(buses_gdf_unique,crs=fiona.crs.from_epsg(4326),geometry='geometry')
+    return [gpd.GeoDataFrame(buses_gdf_unique,crs=fiona.crs.from_epsg(4326),geometry='geometry'),points_list,real_coords_list]
 
 # WE LOGIN IN THE EMT API
-from api_credentials import email,password
-accessToken = get_access_token(email,password)
+from api_credentials import emails,passwords
+accessToken = get_access_token(emails[2],passwords[2])
 #Token for the mapbox api
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
 style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
@@ -320,11 +342,14 @@ def update_graph_live(lineId_value,n_intervals):
         center_y = float(center.y)
         
         #We obtain the arrival data for the line
-        arrival_time_data = get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,accessToken)
+        arrival_time_data_complete = get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,accessToken)
+        arrival_time_data = arrival_time_data_complete[0]
+        points_list = arrival_time_data_complete[1]
+        real_coords_list = arrival_time_data_complete[2]
         
         #Style depending on hour
         now = datetime.datetime.now()
-        if (datetime.time(hour=6, minute=0) <= now.time() <= datetime.time(hour=23, minute=30)) :
+        if (datetime.time(6,0,0) <= now.time() <= datetime.time(23,30,0)) :
             style = style_day
         else :
             style = style_night
@@ -332,18 +357,43 @@ def update_graph_live(lineId_value,n_intervals):
         #We create the figure object
         fig = go.Figure()
         #Add the traces to the figure
-        fig.add_trace(go.Scattermapbox(
-            lat=arrival_time_data['geometry'].y,
-            lon=arrival_time_data['geometry'].x,
-            mode='markers',
-            marker=go.scattermapbox.Marker(
-                size=10,
-                color='rgb(255, 0, 0)',
-                opacity=0.7
-            ),
-            text=arrival_time_data['bus'],
-            hoverinfo='text'
-        ))
+        for index,bus in arrival_time_data.iterrows() :
+            if bus['direction'] == '1' :
+                color = 'blue'
+            else : 
+                color = 'red'
+            fig.add_trace(go.Scattermapbox(
+                lat=[bus['geometry'].y],
+                lon=[bus['geometry'].x],
+                mode='markers',
+                marker=go.scattermapbox.Marker(
+                    size=10,
+                    color=color,
+                    opacity=0.7
+                ),
+                text=[bus['bus']],
+                hoverinfo='text'
+            ))
+        #Plot the lines in soft color
+        for index, row in route_lines.loc[route_lines['line_id']==lineId].iterrows():
+            line = row['geometry']
+            x_coords = []
+            y_coords = []
+            for coords in list(line.coords) :
+                x_coords.append(coords[0])
+                y_coords.append(coords[1])
+            
+            if row['direction'] == '1':
+                color = 'rgb(108, 173, 245)'
+            else :
+                color = 'rgb(243, 109, 90)'
+                
+            fig.add_trace(go.Scattermapbox(
+                lat=y_coords,
+                lon=x_coords,
+                mode='lines',
+                line=dict(width=3, color=color)
+            ))
         #And set the figure layout
         fig.update_layout(
             title='REAL TIME POSITION OF THE BUSES OF LINE {}'.format(lineId),
@@ -364,10 +414,18 @@ def update_graph_live(lineId_value,n_intervals):
             )
         )
         #And finally we return the graph element
-        return dcc.Graph(
-            id = 'graph',
-            figure = fig
-        )
+        return [
+            html.H2(
+                    'Live position of line {} buses'.format(lineId),
+                    className = 'subtitle is-4'
+            ),
+            dcc.Graph(
+                id = 'graph',
+                figure = fig
+            )
+        ]
+    except ValueError :
+        return 'No active buses were found in the desired line - Maybe the line is not active at the moment'
     except:
         #If there is an error we ask for a valid line id
         return 'Please select a lineId from the list'

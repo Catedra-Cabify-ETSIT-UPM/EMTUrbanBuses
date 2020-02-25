@@ -14,6 +14,7 @@ import fiona
 import branca.colormap as cm
 
 import datetime
+from collections import Counter
 
 from app import app
 
@@ -37,7 +38,7 @@ layout = html.Div(className = '', children = [
             searchable=True,
             multi=True
         ),
-        html.Div(id='lines-graph')
+        html.Div(className='box',id='lines-graph')
     ])
 ])
 
@@ -73,8 +74,7 @@ def update_lines_graph(lineIds_value):
         if showAll :
             stops_of_lines = stops['stop_code'].tolist()
             stops_selected = stops
-            lines_selected = route_lines
-        
+            lines_selected = route_lines       
         else: 
             stops_of_lines = []
             for lineId in lineIds :
@@ -85,7 +85,6 @@ def update_lines_graph(lineIds_value):
                     if line_stops_dict[lineId]['2'] != None :
                         for stopId in line_stops_dict[lineId]['2']['stops'] :
                             stops_of_lines.append(stopId)
-
 
             stops_of_lines = list(set(stops_of_lines))
             stops_selected = stops.loc[stops['stop_code'].isin(stops_of_lines)]
@@ -123,7 +122,6 @@ def update_lines_graph(lineIds_value):
         #Add lines to the figure
         for index, row in lines_selected.iterrows():
             line = row['geometry']
-            n_paradas = len(line_stops_dict[row['line_id']][row['direction']]['stops'])
             x_coords = []
             y_coords = []
             for coords in list(line.coords) :
@@ -139,7 +137,7 @@ def update_lines_graph(lineIds_value):
                 lon=x_coords,
                 mode='lines',
                 line=dict(width=3, color=color),
-                text='Línea : {}-{}, Nº Paradas : {}'.format(row['line_id'],row['direction'],n_paradas),
+                text='Línea : {}-{}'.format(row['line_id'],row['direction']),
                 hoverinfo='text'
             ))
         #And set the figure layout
@@ -166,6 +164,10 @@ def update_lines_graph(lineIds_value):
             return 'Please select one or multiple line ids from the list'
         else :
             return [
+                html.H2(
+                    'Selected lines map',
+                    className = 'subtitle is-4'
+                ),
                 dcc.Graph(
                     id = 'graph',
                     figure = fig
@@ -175,7 +177,6 @@ def update_lines_graph(lineIds_value):
                     className = 'subtitle is-5'
                 )
             ]
-    
     except :
         #If there is an error we ask for a valid line id
         return 'Please select one or multiple line ids from the list'
