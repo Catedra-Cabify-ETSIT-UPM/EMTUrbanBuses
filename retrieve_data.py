@@ -125,8 +125,7 @@ def get_access_token(email,password) :
     )
     
     json_response = response.json()
-    accessToken = json_response['data'][0]['accessToken']
-    return accessToken
+    return json_response
 
 def get_arrival_times(stopId,accessToken) :
     """
@@ -254,8 +253,13 @@ def get_arrival_data(requested_lines) :
                     if arrival_data['code'] == '98':
                         #If we spend all the hits we switch the account and wait for next request
                         account_index = (account_index+1)%5
-                        accessToken = get_access_token(emails[account_index],passwords[account_index])
-                        return None
+                        print('Switching to account_index = {} - {}'.format(account_index,datetime.datetime.now()))
+                        try :
+                            accessToken = get_access_token(emails[account_index],passwords[account_index])['data'][0]['accessToken']
+                            return None
+                        except IndexError : 
+                            print('Account {} also out of hits'.format(account_index))
+                            return None
                 else :
                     #If the response isnt okey we pass to the next iteration
                     pass
@@ -355,15 +359,27 @@ def get_arrival_data(requested_lines) :
 
 #Global vars
 from api_credentials import emails,passwords
-account_index = 4
+account_index = 0
 accessToken = ''
 
 def main():
     global account_index
     global accessToken
     
-    #Initial accessToken
-    accessToken = get_access_token(emails[account_index],passwords[account_index])
+    #Initial value of accessToken
+    for i in range(0,5) :
+        account_index = i
+        json_response = get_access_token(emails[account_index],passwords[account_index])
+        if json_response['code'] == '98' :
+            print('Account {} has no hits available'.format(account_index))
+            if i == 4 : 
+                print('None of the accounts has hits available - Exiting script')
+                exit(0)
+            else :
+                pass
+        elif json_response['code'] == '00' :
+            accessToken = json_response['data'][0]['accessToken']
+            break
     
     rt_started = False
     
@@ -382,29 +398,34 @@ def main():
             #Retrieve data from lines 1,82,91,92,99,132 - 207 Stops
             if time_in_range(start_time_day,end_time_day,now.time()) :
                 if not rt_started :
+                    print('Retrieve data from lines 1,82,91,92,99,132 - 207 Stops - {}'.format(datetime.datetime.now()))
                     requested_lines = ['1','82','91','92','99','132']
                     rt = RepeatedTimer(45, get_arrival_data, requested_lines)
                     rt_started = True
             else :
                 #Stop timer if it exists
                 if tl_started :
+                    print('Stop retrieving data from lines 1,82,91,92,99,132 - 207 Stops - {}'.format(datetime.datetime.now()))
                     rt.stop()
                     rt_started = False
         #If we are in Saturday or Sunday
         else : 
             #Retrieve data from lines 69,82,132 - 185 Stops
             if time_in_range(start_time_day,end_time_day,now.time()) :
+                print('Retrieve data from lines 69,82,132 - 185 Stops - {}'.format(datetime.datetime.now()))
                 requested_lines = ['1','82','132']
                 rt = RepeatedTimer(60, get_arrival_data, requested_lines)
                 rt_started = True
             #Retrieve data from lines 502,506 - 131 Stops
             elif time_in_range(start_time_night,end_time_night,now.time()) :
+                print('Retrieve data from lines 502,506 - 131 Stops - {}'.format(datetime.datetime.now()))
                 requested_lines = ['502','506']
                 rt = RepeatedTimer(60, get_arrival_data, requested_lines)
                 rt_started = True
             else :
                 #Stop timer if it exists
                 if rt_started :
+                    print('Stop retrieving data for weekends - {}'.format(datetime.datetime.now()))
                     rt.stop()
                     rt_started = False 
                     
