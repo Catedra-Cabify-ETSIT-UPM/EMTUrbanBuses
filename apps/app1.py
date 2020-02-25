@@ -14,6 +14,7 @@ import plotly.graph_objects as go
 from shapely.geometry import shape
 from shapely.geometry import Point, LineString
 from shapely import wkt
+import math
 import fiona
 
 import asyncio
@@ -163,6 +164,22 @@ def get_arrival_times(lineId,stopId,accessToken) :
     return [arrival_data,stopId,stop_coords]
 
 # FUNCTIONS
+def haversine(coord1, coord2):
+    '''
+    Returns distance between two given coordinates in meters
+    '''
+    R = 6372800  # Earth radius in meters
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    
+    phi1, phi2 = math.radians(lat1), math.radians(lat2) 
+    dphi       = math.radians(lat2 - lat1)
+    dlambda    = math.radians(lon2 - lon1)
+    
+    a = math.sin(dphi/2)**2 + \
+        math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    
+    return 2*R*math.atan2(math.sqrt(a), math.sqrt(1 - a))
 def point_by_distance_on_line (line, line_lenght, distance, origin_point) :
     """
     Returns the coordinates of the bus location
@@ -216,6 +233,15 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
             lineId = 'N'+lineId[2]
         else :
             lineId = 'N'+lineId[1:]
+    #Buses with letter id
+    elif lineId == '91' :
+        lineId = 'F'
+    elif lineId == '92' :
+        lineId = 'G'
+    elif lineId == '68' :
+        lineId = 'C1'
+    elif lineId == '69' :
+        lineId = 'C2'
     
     #We get the LineString object and length from the rows
     line1_geom = line1['geometry']
@@ -283,6 +309,9 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
     
     #We create the dataframe of the buses
     buses_gdf = pd.DataFrame(row_list, columns=keys)
+    buses_list = []
+    for index,row in buses_gdf.iterrows() :
+        buses_list.append(str(row['bus'])+'-('+str(row['stop'])+')')
     final_coords_list = []
     #Use the real coords if they exist
     for i in range(0,len(points_list)) :
@@ -302,11 +331,11 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
     buses_gdf_unique = pd.concat(frames)
     
     #Finally we return the geodataframe
-    return [gpd.GeoDataFrame(buses_gdf_unique,crs=fiona.crs.from_epsg(4326),geometry='geometry'),points_list,real_coords_list]
+    return [gpd.GeoDataFrame(buses_gdf_unique,crs=fiona.crs.from_epsg(4326),geometry='geometry'),points_list,real_coords_list,buses_list]
 
 # WE LOGIN IN THE EMT API
 from api_credentials import emails,passwords
-accessToken = get_access_token(emails[2],passwords[2])
+accessToken = get_access_token(emails[3],passwords[3])
 #Token for the mapbox api
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
 style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
@@ -319,15 +348,7 @@ style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
               [Input(component_id = 'lineId-select',component_property = 'value'),
               Input(component_id = 'interval-component',component_property = 'n_intervals')])
 def update_graph_live(lineId_value,n_intervals):
-    '''
-    Function that updates the graph each x seconds depending on the value of lineId
-    
-        Parameters
-        ---
-        input_lineId_value: string
-            The line whose buses are going to be ploted
-    '''
-    try:
+
         lineId = lineId_value
 
         #We get the stops of the line from the dict
@@ -346,7 +367,21 @@ def update_graph_live(lineId_value,n_intervals):
         arrival_time_data = arrival_time_data_complete[0]
         points_list = arrival_time_data_complete[1]
         real_coords_list = arrival_time_data_complete[2]
+        buses_list = arrival_time_data_complete[3]
         
+        #We calculate the distance between real and calc coords
+        dist_list = []
+        for i in range(0,len(points_list)) :
+            lon1 = points_list[i].x
+            lat1 = points_list[i].y
+            lon2 = real_coords_list[i].x
+            lat2 = real_coords_list[i].y
+            if (lon2 == 0)&(lat2 == 0) :
+                distance = 0
+            else :
+                distance = haversine((lat1,lon1),(lat2, lon2))
+            dist_list.append(distance) #Distancia en metros
+            
         #Style depending on hour
         now = datetime.datetime.now()
         if (datetime.time(6,0,0) <= now.time() <= datetime.time(23,30,0)) :
@@ -374,6 +409,22 @@ def update_graph_live(lineId_value,n_intervals):
                 text=[bus['bus']],
                 hoverinfo='text'
             ))
+        stops_of_lines = list(set(stops_dir1 + stops_dir2))
+        stops_selected = stops.loc[stops['stop_code'].isin(stops_of_lines)]
+        #Add the stops to the figure
+        fig.add_trace(go.Scattermapbox(
+            lat=stops_selected['geometry'].y,
+            lon=stops_selected['geometry'].x,
+            mode='markers',
+            marker=go.scattermapbox.Marker(
+                size=5,
+                color='green',
+                opacity=0.5
+            ),
+            text=stops_selected['stop_code'],
+            hoverinfo='text'
+        ))
+        
         #Plot the lines in soft color
         for index, row in route_lines.loc[route_lines['line_id']==lineId].iterrows():
             line = row['geometry']
@@ -392,7 +443,9 @@ def update_graph_live(lineId_value,n_intervals):
                 lat=y_coords,
                 lon=x_coords,
                 mode='lines',
-                line=dict(width=3, color=color)
+                line=dict(width=1, color=color),
+                text='Línea : {}-{}'.format(row['line_id'],row['direction']),
+                hoverinfo='text'
             ))
         #And set the figure layout
         fig.update_layout(
@@ -409,23 +462,61 @@ def update_graph_live(lineId_value,n_intervals):
                     lon=center_x
                 ),
                 pitch=0,
-                zoom=13,
+                zoom=12.5,
                 style=style
             )
         )
+        #Clear null values (coords not given)
+        pop_list = []
+        for i in range(0,len(buses_list)) :
+            if dist_list[i]==0 :
+                pop_list.append(i)
+        for index in sorted(pop_list, reverse=True):
+            del buses_list[index]
+            del dist_list[index]
+        
+        
+        #We create the figure object
+        fig2 = go.Figure()
+        fig2.add_trace(go.Bar(x=buses_list,
+            y=dist_list,
+            name='Error bar graph',
+            marker_color='#2ca02c'
+        ))
+        fig.update_layout(
+            height=600,
+            margin=dict(r=0, l=0, t=0, b=0),
+            yaxis=dict(
+                title='Distance(meters)'
+            )
+        )
+        
         #And finally we return the graph element
         return [
-            html.H2(
-                    'Live position of line {} buses'.format(lineId),
-                    className = 'subtitle is-4'
-            ),
-            dcc.Graph(
-                id = 'graph',
-                figure = fig
-            )
+            html.Div(className='columns',children=[
+                html.Div(className='column is-two-thirds',children=[
+                    html.H2(
+                        'Live position of line {} buses'.format(lineId),
+                        className = 'subtitle is-4'
+                    ),
+                    dcc.Graph(
+                        id = 'graph',
+                        figure = fig
+                    )
+                ]),
+                html.Div(className='column',children=[
+                    html.H2(
+                        'Error in calculated position:',
+                        className = 'subtitle is-4'
+                    ),
+                    html.H2(
+                        'distance(RealCoords,CalcCoords) in meters for pair "bus-(stop)"',
+                        className = 'subtitle is-5'
+                    ),
+                    dcc.Graph(
+                        id = 'graph2',
+                        figure = fig2
+                    )
+                ])
+            ]),
         ]
-    except ValueError :
-        return 'No active buses were found in the desired line - Maybe the line is not active at the moment'
-    except:
-        #If there is an error we ask for a valid line id
-        return 'Please select a lineId from the list'

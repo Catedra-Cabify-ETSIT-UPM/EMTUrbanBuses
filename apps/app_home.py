@@ -80,11 +80,9 @@ def update_lines_graph(lineIds_value):
             for lineId in lineIds :
                 if line_stops_dict[lineId] != None :
                     if line_stops_dict[lineId]['1'] != None :
-                        for stopId in line_stops_dict[lineId]['1']['stops'] :
-                            stops_of_lines.append(stopId)
+                        stops_of_lines = stops_of_lines + line_stops_dict[lineId]['1']['stops']
                     if line_stops_dict[lineId]['2'] != None :
-                        for stopId in line_stops_dict[lineId]['2']['stops'] :
-                            stops_of_lines.append(stopId)
+                        stops_of_lines = stops_of_lines + line_stops_dict[lineId]['2']['stops']
 
             stops_of_lines = list(set(stops_of_lines))
             stops_selected = stops.loc[stops['stop_code'].isin(stops_of_lines)]
@@ -99,7 +97,7 @@ def update_lines_graph(lineIds_value):
         center_y = lines_selected.centroid.y.mean()
         #Style depending on hour
         now = datetime.datetime.now()
-        if (datetime.time(hour=6, minute=0) <= now.time() <= datetime.time(hour=23, minute=30)) :
+        if (datetime.time(6,0,0) <= now.time() <= datetime.time(23,30,0)) :
             style = style_day
         else :
             style = style_night
@@ -136,7 +134,7 @@ def update_lines_graph(lineIds_value):
                 lat=y_coords,
                 lon=x_coords,
                 mode='lines',
-                line=dict(width=3, color=color),
+                line=dict(width=2, color=color),
                 text='Línea : {}-{}'.format(row['line_id'],row['direction']),
                 hoverinfo='text'
             ))
@@ -159,6 +157,7 @@ def update_lines_graph(lineIds_value):
                 style=style
             )
         )
+        
         #And finally we return the graph element
         if len(stops_of_lines)==0 :
             return 'Please select one or multiple line ids from the list'

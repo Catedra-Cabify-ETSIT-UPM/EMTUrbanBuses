@@ -106,10 +106,10 @@ def main():
     
     while True :
         #Retrieve data every interval seconds if we are between 6:00 and 23:30
-        now = datetime.datetime.now() + timedelta(hours=1)
+        now = datetime.datetime.now()
         #If we are not in the weekend
         if now.weekday() in [0,1,2,3,4] :
-            #Retrieve data from lines 68,82,91,92,132
+            #Retrieve data from lines 68,82,91,92,132 - 198 Stops
             if time_in_range(start_time_day,end_time_day,now.time()) :
                 if not rt_started :
                     rt = RepeatedTimer(2, print, "Hello World")
@@ -119,12 +119,12 @@ def main():
                 if tl_started :
                     rt.stop()
                     rt_started = False
-        #If we are in Saturday on Sunday
+        #If we are in Saturday or Sunday
         else : 
-            #Retrieve data from lines 68,82,132
+            #Retrieve data from lines 68,82,132 - 186 Stops
             if time_in_range(start_time_day,end_time_day,now.time()) :
                 pass
-            #Retrieve data from lines 502,506
+            #Retrieve data from lines 502,506 - 131 Stops
             elif time_in_range(start_time_night,end_time_night,now.time()) :
                 pass
             else :

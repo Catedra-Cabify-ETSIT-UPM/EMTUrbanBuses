@@ -3,7 +3,7 @@ import dash_html_components as html
 from dash.dependencies import Input, Output
 
 from app import app
-from apps import app_home, app1
+from apps import app_home, app1, app_credits
 
 #APP INDEX STRING
 app.index_string = '''
@@ -89,7 +89,7 @@ def display_page(pathname):
     if pathname == '/apps/app1':
          return app1.layout
     else:
-        return '404'
+        return app_credits.layout
 
 #START THE SERVER
 if __name__ == '__main__':
