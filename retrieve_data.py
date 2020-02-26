@@ -256,6 +256,7 @@ def get_arrival_data(requested_lines) :
                         print('Switching to account_index = {} - {}'.format(account_index,datetime.datetime.now()))
                         try :
                             accessToken = get_access_token(emails[account_index],passwords[account_index])['data'][0]['accessToken']
+                            print('Making requests from account {} - accessToken : {}'.format(account_index,accessToken))
                             return None
                         except IndexError : 
                             print('Account {} also out of hits'.format(account_index))
@@ -377,8 +378,9 @@ def main():
                 exit(0)
             else :
                 pass
-        elif json_response['code'] == '00' :
+        elif (json_response['code'] == '00') | (json_response['code'] == '01') :
             accessToken = json_response['data'][0]['accessToken']
+            print('Making requests from account {} - accessToken : {}'.format(account_index,accessToken))
             break
     
     rt_started = False
@@ -400,11 +402,11 @@ def main():
                 if not rt_started :
                     print('Retrieve data from lines 1,82,91,92,99,132 - 207 Stops - {}'.format(datetime.datetime.now()))
                     requested_lines = ['1','82','91','92','99','132']
-                    rt = RepeatedTimer(45, get_arrival_data, requested_lines)
+                    rt = RepeatedTimer(130, get_arrival_data, requested_lines)
                     rt_started = True
             else :
                 #Stop timer if it exists
-                if tl_started :
+                if rt_started :
                     print('Stop retrieving data from lines 1,82,91,92,99,132 - 207 Stops - {}'.format(datetime.datetime.now()))
                     rt.stop()
                     rt_started = False
@@ -414,13 +416,13 @@ def main():
             if time_in_range(start_time_day,end_time_day,now.time()) :
                 print('Retrieve data from lines 69,82,132 - 185 Stops - {}'.format(datetime.datetime.now()))
                 requested_lines = ['1','82','132']
-                rt = RepeatedTimer(60, get_arrival_data, requested_lines)
+                rt = RepeatedTimer(150, get_arrival_data, requested_lines)
                 rt_started = True
             #Retrieve data from lines 502,506 - 131 Stops
             elif time_in_range(start_time_night,end_time_night,now.time()) :
                 print('Retrieve data from lines 502,506 - 131 Stops - {}'.format(datetime.datetime.now()))
                 requested_lines = ['502','506']
-                rt = RepeatedTimer(60, get_arrival_data, requested_lines)
+                rt = RepeatedTimer(150, get_arrival_data, requested_lines)
                 rt_started = True
             else :
                 #Stop timer if it exists
@@ -430,7 +432,7 @@ def main():
                     rt_started = False 
                     
         #Wait 2 seconds till next loop (no need to run the loop faster)
-        time.sleep(2)
+        time.sleep(10)
         
 if __name__== "__main__":
     main()
