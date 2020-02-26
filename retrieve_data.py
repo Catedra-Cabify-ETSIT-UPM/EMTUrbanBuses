@@ -3,6 +3,7 @@ import geopandas as gpd
 import json
 import re
 import os.path
+import random
 
 import time
 import datetime
@@ -115,14 +116,25 @@ def get_access_token(email,password) :
         password : string
             Password of the account
     '''
-    response = requests_retry_session().get(
-        'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
-        headers={
-            'email':email,
-            'password':password
-        },
-        timeout=5
-    )
+    if account_index == 0 :
+        #Special request for the account with API
+        response = requests_retry_session().get(
+            'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
+            headers={
+                'X-ClientId':XClientId,
+                'passKey':passKey
+            },
+            timeout=5
+        )
+    else :
+        response = requests_retry_session().get(
+            'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
+            headers={
+                'email':email,
+                'password':password
+            },
+            timeout=5
+        )
     
     json_response = response.json()
     return json_response
@@ -228,13 +240,14 @@ def get_arrival_data(requested_lines) :
     async def get_data_asynchronous() :
         global account_index
         global accessToken
+        global out_of_hits
         
         row_list = []
         points_list = []
         real_coords_list = []
         
         #We set the number of workers that is going to take care about the requests
-        with ThreadPoolExecutor(max_workers=50) as executor:
+        with ThreadPoolExecutor(max_workers=30) as executor:
             #We create a loop object
             loop = asyncio.get_event_loop()
             #And a list of tasks to be performed by the loop
@@ -246,21 +259,21 @@ def get_arrival_data(requested_lines) :
                 )
                 for stopId in stops_of_lines
             ]
+            #We randomize the order of the tasks
+            random.shuffle(tasks)
             #And finally we perform the tasks and gather the information returned by them into two lists
             for response in await asyncio.gather(*tasks) :
                 if response.status_code == 200 : 
                     arrival_data = response.json()
                     if arrival_data['code'] == '98':
                         #If we spend all the hits we switch the account and wait for next request
-                        account_index = (account_index+1)%5
-                        print('Switching to account_index = {} - {}'.format(account_index,datetime.datetime.now()))
-                        try :
-                            accessToken = get_access_token(emails[account_index],passwords[account_index])['data'][0]['accessToken']
-                            print('Making requests from account {} - accessToken : {}'.format(account_index,accessToken))
+                        out_of_hits = True
+                        print('Hits of account_index = {} spent - {}'.format(account_index,datetime.datetime.now()))
+                        #Return the data gathered if the request that fails isnt the first
+                        if len(row_list) == 0 :
                             return None
-                        except IndexError : 
-                            print('Account {} also out of hits'.format(account_index))
-                            return None
+                        else :
+                            return [row_list,points_list,real_coords_list]
                 else :
                     #If the response isnt okey we pass to the next iteration
                     pass
@@ -359,13 +372,17 @@ def get_arrival_data(requested_lines) :
         
 
 #Global vars
-from api_credentials import emails,passwords
+from api_credentials import emails,passwords,XClientId,passKey
 account_index = 0
 accessToken = ''
+out_of_hits = True
 
 def main():
     global account_index
     global accessToken
+    global out_of_hits
+    
+    rt_started = False
     
     #Initial value of accessToken
     for i in range(0,5) :
@@ -374,16 +391,15 @@ def main():
         if json_response['code'] == '98' :
             print('Account {} has no hits available'.format(account_index))
             if i == 4 : 
-                print('None of the accounts has hits available - Exiting script')
-                exit(0)
+                print('None of the accounts has hits available')
+                i = 0
             else :
                 pass
         elif (json_response['code'] == '00') | (json_response['code'] == '01') :
             accessToken = json_response['data'][0]['accessToken']
             print('Making requests from account {} - accessToken : {}'.format(account_index,accessToken))
+            out_of_hits = False
             break
-    
-    rt_started = False
     
     #Normal buses hours range
     start_time_day = datetime.time(6,0,0)
@@ -395,6 +411,37 @@ def main():
     while True :
         #Retrieve data every interval seconds if we are between 6:00 and 23:30
         now = datetime.datetime.now()
+        
+        #If we have lost all the hits
+        if out_of_hits :
+            #Wait until we have hits available again
+            if ( (now.weekday() in [0,1,2,3,4]) & (time_in_range(start_time_day,end_time_day,now.time())) ) | (now.weekday() in [5,6]) :
+                for i in range(0,5) :
+                    account_index = i
+                    json_response = get_access_token(emails[account_index],passwords[account_index])
+                    if json_response['code'] == '98' :
+                        print('Account {} has no hits available'.format(account_index))
+                        if i == 4 : 
+                            print('None of the accounts has hits available - Sleeping 10 minutes - {}'.format(datetime.datetime.now()))
+                            i = 0
+                            if rt_started :
+                                print('Stop retrieving data - {}'.format(datetime.datetime.now()))
+                                rt.stop()
+                                rt_started = False
+                            time.sleep(600)
+                        else :
+                            pass
+                    elif (json_response['code'] == '00') | (json_response['code'] == '01') :
+                        accessToken = json_response['data'][0]['accessToken']
+                        print('Making requests from account {} - accessToken : {}'.format(account_index,accessToken))
+                        out_of_hits = False
+                        break
+            else :
+                #We wait 10 minutes
+                time.sleep(600)
+            #We pass directly to next iteration
+            continue
+        
         #If we are not in the weekend
         if now.weekday() in [0,1,2,3,4] :
             #Retrieve data from lines 1,82,91,92,99,132 - 207 Stops
@@ -402,7 +449,7 @@ def main():
                 if not rt_started :
                     print('Retrieve data from lines 1,82,91,92,99,132 - 207 Stops - {}'.format(datetime.datetime.now()))
                     requested_lines = ['1','82','91','92','99','132']
-                    rt = RepeatedTimer(130, get_arrival_data, requested_lines)
+                    rt = RepeatedTimer(60, get_arrival_data, requested_lines)
                     rt_started = True
             else :
                 #Stop timer if it exists
@@ -416,13 +463,13 @@ def main():
             if time_in_range(start_time_day,end_time_day,now.time()) :
                 print('Retrieve data from lines 69,82,132 - 185 Stops - {}'.format(datetime.datetime.now()))
                 requested_lines = ['1','82','132']
-                rt = RepeatedTimer(150, get_arrival_data, requested_lines)
+                rt = RepeatedTimer(60, get_arrival_data, requested_lines)
                 rt_started = True
             #Retrieve data from lines 502,506 - 131 Stops
             elif time_in_range(start_time_night,end_time_night,now.time()) :
                 print('Retrieve data from lines 502,506 - 131 Stops - {}'.format(datetime.datetime.now()))
                 requested_lines = ['502','506']
-                rt = RepeatedTimer(150, get_arrival_data, requested_lines)
+                rt = RepeatedTimer(70, get_arrival_data, requested_lines)
                 rt_started = True
             else :
                 #Stop timer if it exists
@@ -431,7 +478,7 @@ def main():
                     rt.stop()
                     rt_started = False 
                     
-        #Wait 2 seconds till next loop (no need to run the loop faster)
+        #Wait 10 seconds till next loop (no need to run the loop faster)
         time.sleep(10)
         
 if __name__== "__main__":
