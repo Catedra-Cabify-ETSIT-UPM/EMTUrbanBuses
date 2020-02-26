@@ -82,18 +82,35 @@ def get_access_token(email,password) :
         password : string
             Password of the account
     '''
-    response = requests_retry_session().get(
-        'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
-        headers={
-            'email':email,
-            'password':password
-        },
-        timeout=5
-    )
-
-    json_response = response.json()
-    accessToken = json_response['data'][0]['accessToken']
-    return accessToken
+    try:
+        if email == 'a.jarabo@alumnos.upm.es' :
+            #Special request for the account with API
+            response = requests_retry_session().get(
+                'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
+                headers={
+                    'X-ClientId':XClientId,
+                    'passKey':passKey
+                },
+                timeout=5
+            )
+        else :
+            response = requests_retry_session().get(
+                'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
+                headers={
+                    'email':email,
+                    'password':password
+                },
+                timeout=5
+            )
+        json_response = response.json()
+        if json_response['code'] == '98' :
+            return '98'
+        else :
+            return json_response['data'][0]['accessToken']
+    
+    except requests.exceptions.RequestException as e:
+        print(e + '\n')
+        return 'Error'
 
 def get_arrival_times(lineId,stopId,accessToken) :
     """
@@ -119,21 +136,21 @@ def get_arrival_times(lineId,stopId,accessToken) :
     }
     
     #And we perform the request
-    response = requests_retry_session().post(
-        'https://openapi.emtmadrid.es/v2/transport/busemtmad/stops/{}/arrives/{}/'.format(stopId,lineId),
-        data = json.dumps(body),
-        headers = {
-            'accessToken': accessToken,
-            'Content-Type': 'application/json'
-        },
-        timeout = 5
-    )
-    
-    #We turn the data into a json and return the arrival data and the coordinates of the stop that made the call
-    response_json = response.json()
-    arrival_data = response_json['data'][0]['Arrive']
-    stop_coords = Point(response_json['data'][0]['StopInfo'][0]['geometry']['coordinates'])
-    return [arrival_data,stopId,stop_coords]
+    try:
+        response = requests_retry_session().post(
+            'https://openapi.emtmadrid.es/v2/transport/busemtmad/stops/{}/arrives/{}/'.format(stopId,lineId),
+            data = json.dumps(body),
+            headers = {
+                'accessToken': accessToken,
+                'Content-Type': 'application/json'
+            },
+            timeout = 20
+        )
+        #Return the response if we received it ok
+        return response
+    except requests.exceptions.RequestException as e:
+        print(e + '\n')
+        return 'Error'
 
 # FUNCTIONS
 def haversine(coord1, coord2):
@@ -247,18 +264,27 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
                 )
                 for stopId in stop_codes
             ]
-            #We select just half of the tasks to perform randomly
-            #tasks = random.sample(tasks, len(tasks)/2)
             #And finally we perform the tasks and gather the information returned by them into two lists
-            for arrival_data in await asyncio.gather(*tasks) :
-                arrival_times = arrival_data[0]
-                stop_id = arrival_data[1]
-                stop_coords = arrival_data[2]
-                for bus in arrival_times :
+            for response in await asyncio.gather(*tasks) :
+                if not response == 'Error' :
+                    arrival_data = response.json()
+                    if arrival_data['code'] == '98':
+                        #Return the data gathered if the request that fails isnt the first
+                        if len(row_list) == 0 :
+                            return 'Hits of account spent'
+                        else :
+                            return [row_list,points_list,real_coords_list]
+                else :
+                    continue
+
+                #We get the buses data and stop coords
+                buses_data = arrival_data['data'][0]['Arrive']
+                stop_coords = Point(arrival_data['data'][0]['StopInfo'][0]['geometry']['coordinates'])
+                for bus in buses_data :
                     #Real coordinates provided by the API
                     real_coords_list.append(Point(bus['geometry']['coordinates']))
                     #We calculate the bus position depending on the direction it belongs to
-                    if stop_id in stops_dir1 :
+                    if bus['stop'] in stops_dir1 :
                         bus['direction'] = '1'
                         points_list.append(Point(point_by_distance_on_line(line1_geom,line1_length,bus['DistanceBus']/1000,stop_coords)))
                     else :
@@ -266,6 +292,7 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
                         points_list.append(Point(point_by_distance_on_line(line2_geom,line2_length,bus['DistanceBus']/1000,stop_coords)))
                     values = [bus[key] for key in keys]
                     row_list.append(dict(zip(keys, values)))
+                    
         return [row_list,points_list,real_coords_list]
     
     #We declare the loop and call it, then we run it until it is complete
@@ -276,39 +303,54 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
     
     #And once it is completed we gather the information returned by it like this
     future_result = future.result()
-    row_list = future_result[0]
-    points_list = future_result[1]
-    real_coords_list = future_result[2]
+    if future_result == 'Hits of account spent' :
+        return 'Hits of account spent'
+    else :
+        row_list = future_result[0]
+        points_list = future_result[1]
+        real_coords_list = future_result[2]
     
-    #We create the dataframe of the buses
-    buses_gdf = pd.DataFrame(row_list, columns=keys)
-    buses_list = []
-    for index,row in buses_gdf.iterrows() :
-        buses_list.append(str(row['bus'])+'-('+str(row['stop'])+')')
-    final_coords_list = []
-    #Use the real coords if they exist
-    for i in range(0,len(points_list)) :
-        if (real_coords_list[i].y!=0)&(real_coords_list[i].x!=0) :
-            final_coords_list.append(real_coords_list[i])
-        else :
-            final_coords_list.append(points_list[i])
-    buses_gdf['geometry'] = final_coords_list
-    
-    
-    #And then we get only the rows where each bus is closer to a stop (lower DistanceBus attrib)
-    frames = []
-    for busId in buses_gdf['bus'].unique() :
-        buses_gdf_reduced = buses_gdf.loc[(buses_gdf['bus']==busId)]
-        frames.append(buses_gdf_reduced.loc[buses_gdf_reduced['DistanceBus']==buses_gdf_reduced['DistanceBus'].min()])
+        #We create the dataframe of the buses
+        buses_gdf = pd.DataFrame(row_list, columns=keys)
+        buses_list = []
+        for index,row in buses_gdf.iterrows() :
+            buses_list.append(str(row['bus'])+'-('+str(row['stop'])+')')
+        final_coords_list = []
+        #Use the real coords if they exist
+        for i in range(0,len(points_list)) :
+            if (real_coords_list[i].y!=0)&(real_coords_list[i].x!=0) :
+                final_coords_list.append(real_coords_list[i])
+            else :
+                final_coords_list.append(points_list[i])
+        buses_gdf['geometry'] = final_coords_list
+        buses_gdf['calc_coord'] = points_list
 
-    buses_gdf_unique = pd.concat(frames)
-    
-    #Finally we return the geodataframe
-    return [gpd.GeoDataFrame(buses_gdf_unique,crs=fiona.crs.from_epsg(4326),geometry='geometry'),points_list,real_coords_list,buses_list]
+        #And then we get only the rows where each bus is closer to a stop (lower DistanceBus attrib)
+        frames = []
+        for busId in buses_gdf['bus'].unique() :
+            buses_gdf_reduced = buses_gdf.loc[(buses_gdf['bus']==busId)]
+            frames.append(buses_gdf_reduced.loc[buses_gdf_reduced['DistanceBus']==buses_gdf_reduced['DistanceBus'].min()])
+
+        buses_gdf_unique = pd.concat(frames)
+        
+        #Finally we return the geodataframe
+        return [gpd.GeoDataFrame(buses_gdf_unique,crs=fiona.crs.from_epsg(4326),geometry='geometry'),points_list,real_coords_list,buses_list]
 
 # WE LOGIN IN THE EMT API
-from api_credentials import emails,passwords
-accessToken = get_access_token(emails[3],passwords[3])
+from api_credentials import emails,passwords,XClientId,passKey
+#Try to get an accessToken until we get a response to the login without errors
+for i in range(0,5) :
+    accessToken = 'Error'
+    while accessToken == 'Error' : 
+        accessToken = get_access_token(emails[i],passwords[i])
+    if accessToken == '98' :
+        if i == 4 :
+            print('No hits available in any of the accounts - Closing server')
+            exit(0)
+    else :
+        #Login made correctly
+        break
+        
 #Token for the mapbox api
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
 style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
@@ -323,7 +365,7 @@ style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
 def update_graph_live(lineId_value,n_intervals):
 
         lineId = lineId_value
-
+        
         #We get the stops of the line from the dict
         stops_dir1 = line_stops_dict[lineId]['1']['stops']
         stops_dir2 = line_stops_dict[lineId]['2']['stops']
@@ -337,10 +379,13 @@ def update_graph_live(lineId_value,n_intervals):
         
         #We obtain the arrival data for the line
         arrival_time_data_complete = get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,accessToken)
-        arrival_time_data = arrival_time_data_complete[0]
-        points_list = arrival_time_data_complete[1]
-        real_coords_list = arrival_time_data_complete[2]
-        buses_list = arrival_time_data_complete[3]
+        if arrival_time_data_complete == 'Hits of account spent' :
+            return 'Hits of account spent'
+        else :
+            arrival_time_data = arrival_time_data_complete[0]
+            points_list = arrival_time_data_complete[1]
+            real_coords_list = arrival_time_data_complete[2]
+            buses_list = arrival_time_data_complete[3]
         
         #We calculate the distance between real and calc coords
         dist_list = []
@@ -364,7 +409,7 @@ def update_graph_live(lineId_value,n_intervals):
             
         #We create the figure object
         fig = go.Figure()
-        #Add the traces to the figure
+        #Add the bus points to the figure
         for index,bus in arrival_time_data.iterrows() :
             if bus['direction'] == '1' :
                 color = 'blue'
@@ -379,9 +424,24 @@ def update_graph_live(lineId_value,n_intervals):
                     color=color,
                     opacity=0.7
                 ),
-                text=[bus['bus']],
+                text=['{}-{}'.format(bus['bus'],bus['stop'])],
                 hoverinfo='text'
             ))
+            #Add the calculated coords points to the figure
+            fig.add_trace(go.Scattermapbox(
+                lat=[bus['calc_coord'].y],
+                lon=[bus['calc_coord'].x],
+                mode='markers',
+                marker=go.scattermapbox.Marker(
+                    size=8,
+                    color='purple',
+                    opacity=0.7
+                ),
+                text=['{}-{}'.format(bus['bus'],bus['stop'])],
+                hoverinfo='text'
+            ))
+            
+        
         stops_of_lines = list(set(stops_dir1 + stops_dir2))
         stops_selected = stops.loc[stops['stop_code'].isin(stops_of_lines)]
         #Add the stops to the figure

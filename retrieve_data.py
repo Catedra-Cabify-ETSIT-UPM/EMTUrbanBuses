@@ -116,28 +116,31 @@ def get_access_token(email,password) :
         password : string
             Password of the account
     '''
-    if account_index == 0 :
-        #Special request for the account with API
-        response = requests_retry_session().get(
-            'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
-            headers={
-                'X-ClientId':XClientId,
-                'passKey':passKey
-            },
-            timeout=5
-        )
-    else :
-        response = requests_retry_session().get(
-            'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
-            headers={
-                'email':email,
-                'password':password
-            },
-            timeout=5
-        )
-    
-    json_response = response.json()
-    return json_response
+    try:
+        if account_index == 0 :
+            #Special request for the account with API
+            response = requests_retry_session().get(
+                'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
+                headers={
+                    'X-ClientId':XClientId,
+                    'passKey':passKey
+                },
+                timeout=5
+            )
+        else :
+            response = requests_retry_session().get(
+                'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
+                headers={
+                    'email':email,
+                    'password':password
+                },
+                timeout=5
+            )
+        json_response = response.json()
+        return json_response
+    except requests.exceptions.RequestException as e:
+        print(e + '\n')
+        return 'Error'
 
 def get_arrival_times(stopId,accessToken) :
     """
@@ -163,18 +166,21 @@ def get_arrival_times(stopId,accessToken) :
     }
     
     #And we perform the request
-    response = requests_retry_session().post(
-        'https://openapi.emtmadrid.es/v2/transport/busemtmad/stops/{}/arrives/{}/'.format(stopId,''),
-        data = json.dumps(body),
-        headers = {
-            'accessToken': accessToken,
-            'Content-Type': 'application/json'
-        },
-        timeout = 20
-    )
-    
-    #We turn the data into a json and return the arrival data and the coordinates of the stop that made the call
-    return response
+    try:
+        response = requests_retry_session().post(
+            'https://openapi.emtmadrid.es/v2/transport/busemtmad/stops/{}/arrives/{}/'.format(stopId,''),
+            data = json.dumps(body),
+            headers = {
+                'accessToken': accessToken,
+                'Content-Type': 'application/json'
+            },
+            timeout = 20
+        )
+        #Return the response if we received it ok
+        return response
+    except requests.exceptions.RequestException as e:
+        print(e + '\n')
+        return 'Error'
 
 def get_arrival_data(requested_lines) :
     """
@@ -185,7 +191,7 @@ def get_arrival_data(requested_lines) :
         requested_lines : list
             List with the desired line ids
     """
-    
+        
     #We get the list of stops to ask for
     stops_of_lines = []
     for lineId in requested_lines :
@@ -246,6 +252,10 @@ def get_arrival_data(requested_lines) :
         points_list = []
         real_coords_list = []
         
+        #Información de la recogida de datos
+        n_ok_answers = 0
+        n_not_ok_answers = 0
+        
         #We set the number of workers that is going to take care about the requests
         with ThreadPoolExecutor(max_workers=30) as executor:
             #We create a loop object
@@ -263,20 +273,28 @@ def get_arrival_data(requested_lines) :
             random.shuffle(tasks)
             #And finally we perform the tasks and gather the information returned by them into two lists
             for response in await asyncio.gather(*tasks) :
-                if response.status_code == 200 : 
-                    arrival_data = response.json()
-                    if arrival_data['code'] == '98':
-                        #If we spend all the hits we switch the account and wait for next request
-                        out_of_hits = True
-                        print('Hits of account_index = {} spent - {}'.format(account_index,datetime.datetime.now()))
-                        #Return the data gathered if the request that fails isnt the first
-                        if len(row_list) == 0 :
-                            return None
-                        else :
-                            return [row_list,points_list,real_coords_list]
+                if not response == 'Error' : 
+                    if response.status_code == 200 : 
+                        arrival_data = response.json()
+                        n_ok_answers = n_ok_answers + 1
+                        if arrival_data['code'] == '98':
+                            #If we spend all the hits we switch the account and wait for next request
+                            out_of_hits = True
+                            print('Hits of account_index = {} spent - {}\n'.format(account_index,datetime.datetime.now()))
+                            #Return the data gathered if the request that fails isnt the first
+                            if len(row_list) == 0 :
+                                return None
+                            else :
+                                print('Appending data gathered before end of hits\n')
+                                return [row_list,points_list,real_coords_list,n_ok_answers,n_not_ok_answers]
+                    else :
+                        #If the response isnt okey we pass to the next iteration
+                        n_not_ok_answers = n_not_ok_answers + 1
+                        continue
                 else :
                     #If the response isnt okey we pass to the next iteration
-                    pass
+                    n_not_ok_answers = n_not_ok_answers + 1
+                    continue
                 
                 lapsed_time = int(re.search('lapsed: (.*) millsecs', arrival_data['description']).group(1))
                 date_time = datetime.datetime.strptime(arrival_data['datetime'], '%Y-%m-%dT%H:%M:%S.%f')
@@ -327,7 +345,7 @@ def get_arrival_data(requested_lines) :
                         row_list.append(dict(zip(keys, values)))
                         
                     
-        return [row_list,points_list,real_coords_list]
+        return [row_list,points_list,real_coords_list,n_ok_answers,n_not_ok_answers]
     
     #We declare the loop and call it, then we run it until it is complete
     loop = asyncio.new_event_loop()
@@ -343,7 +361,9 @@ def get_arrival_data(requested_lines) :
         row_list = future_result[0]
         points_list = future_result[1]
         real_coords_list = future_result[2]
-    
+        n_ok_answers = future_result[3]
+        n_not_ok_answers = future_result[4]
+        
         #We create the dataframe of the buses
         buses_df = pd.DataFrame(row_list, columns=keys)
         final_coords_lat_list = []
@@ -370,6 +390,9 @@ def get_arrival_data(requested_lines) :
         else :
             buses_df.to_csv(f, mode='a', header=True)
         
+        print('There were {} ok responses and {} not okey responses - {}'.format(n_ok_answers,n_not_ok_answers,datetime.datetime.now()))
+        print('{} new rows appended to {}\n'.format(buses_df.shape[0],f))
+        
 
 #Global vars
 from api_credentials import emails,passwords,XClientId,passKey
@@ -387,23 +410,28 @@ def main():
     #Initial value of accessToken
     for i in range(0,5) :
         account_index = i
-        json_response = get_access_token(emails[account_index],passwords[account_index])
+        
+        #Try until we get response to the login without errors
+        json_response = 'Error'
+        while json_response == 'Error' : 
+            json_response = get_access_token(emails[account_index],passwords[account_index])
+                        
         if json_response['code'] == '98' :
-            print('Account {} has no hits available'.format(account_index))
+            print('Account {} has no hits available\n'.format(account_index))
             if i == 4 : 
-                print('None of the accounts has hits available')
+                print('None of the accounts has hits available\n')
                 i = 0
             else :
                 pass
         elif (json_response['code'] == '00') | (json_response['code'] == '01') :
             accessToken = json_response['data'][0]['accessToken']
-            print('Making requests from account {} - accessToken : {}'.format(account_index,accessToken))
+            print('Making requests from account {} - accessToken : {}\n'.format(account_index,accessToken))
             out_of_hits = False
             break
     
     #Normal buses hours range
-    start_time_day = datetime.time(6,0,0)
-    end_time_day = datetime.time(23,30,0)
+    start_time_day = datetime.time(7,0,0)
+    end_time_day = datetime.time(23,0,0)
     #Night buses hours range
     start_time_night = datetime.time(0,0,0)
     end_time_night = datetime.time(5,30,0)
@@ -418,11 +446,16 @@ def main():
             if ( (now.weekday() in [0,1,2,3,4]) & (time_in_range(start_time_day,end_time_day,now.time())) ) | (now.weekday() in [5,6]) :
                 for i in range(0,5) :
                     account_index = i
-                    json_response = get_access_token(emails[account_index],passwords[account_index])
+                    
+                    #Try until we get response to the login without errors
+                    json_response = 'Error'
+                    while json_response == 'Error' : 
+                        json_response = get_access_token(emails[account_index],passwords[account_index])
+                        
                     if json_response['code'] == '98' :
-                        print('Account {} has no hits available'.format(account_index))
+                        print('Account {} has no hits available\n'.format(account_index))
                         if i == 4 : 
-                            print('None of the accounts has hits available - Sleeping 10 minutes - {}'.format(datetime.datetime.now()))
+                            print('None of the accounts has hits available - Sleeping 10 minutes - {}\n'.format(datetime.datetime.now()))
                             i = 0
                             if rt_started :
                                 print('Stop retrieving data - {}'.format(datetime.datetime.now()))
@@ -433,7 +466,7 @@ def main():
                             pass
                     elif (json_response['code'] == '00') | (json_response['code'] == '01') :
                         accessToken = json_response['data'][0]['accessToken']
-                        print('Making requests from account {} - accessToken : {}'.format(account_index,accessToken))
+                        print('Making requests from account {} - accessToken : {}\n'.format(account_index,accessToken))
                         out_of_hits = False
                         break
             else :
@@ -447,34 +480,34 @@ def main():
             #Retrieve data from lines 1,82,91,92,99,132 - 207 Stops
             if time_in_range(start_time_day,end_time_day,now.time()) :
                 if not rt_started :
-                    print('Retrieve data from lines 1,82,91,92,99,132 - 207 Stops - {}'.format(datetime.datetime.now()))
+                    print('Retrieve data from lines 1,82,91,92,99,132 - 207 Stops - {}\n'.format(datetime.datetime.now()))
                     requested_lines = ['1','82','91','92','99','132']
-                    rt = RepeatedTimer(60, get_arrival_data, requested_lines)
+                    rt = RepeatedTimer(55, get_arrival_data, requested_lines)
                     rt_started = True
             else :
                 #Stop timer if it exists
                 if rt_started :
-                    print('Stop retrieving data from lines 1,82,91,92,99,132 - 207 Stops - {}'.format(datetime.datetime.now()))
+                    print('Stop retrieving data from lines 1,82,91,92,99,132 - 207 Stops - {}\n'.format(datetime.datetime.now()))
                     rt.stop()
                     rt_started = False
         #If we are in Saturday or Sunday
         else : 
             #Retrieve data from lines 69,82,132 - 185 Stops
             if time_in_range(start_time_day,end_time_day,now.time()) :
-                print('Retrieve data from lines 69,82,132 - 185 Stops - {}'.format(datetime.datetime.now()))
+                print('Retrieve data from lines 69,82,132 - 185 Stops - {}\n'.format(datetime.datetime.now()))
                 requested_lines = ['1','82','132']
-                rt = RepeatedTimer(60, get_arrival_data, requested_lines)
+                rt = RepeatedTimer(55, get_arrival_data, requested_lines)
                 rt_started = True
             #Retrieve data from lines 502,506 - 131 Stops
             elif time_in_range(start_time_night,end_time_night,now.time()) :
-                print('Retrieve data from lines 502,506 - 131 Stops - {}'.format(datetime.datetime.now()))
+                print('Retrieve data from lines 502,506 - 131 Stops - {}\n'.format(datetime.datetime.now()))
                 requested_lines = ['502','506']
                 rt = RepeatedTimer(70, get_arrival_data, requested_lines)
                 rt_started = True
             else :
                 #Stop timer if it exists
                 if rt_started :
-                    print('Stop retrieving data for weekends - {}'.format(datetime.datetime.now()))
+                    print('Stop retrieving data for weekends - {}\n'.format(datetime.datetime.now()))
                     rt.stop()
                     rt_started = False 
                     
