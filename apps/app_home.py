@@ -34,7 +34,7 @@ layout = html.Div(className = '', children = [
         dcc.Dropdown(
             id="lineIds-select",
             options=[{"label": i, "value": i} for i in list(line_stops_dict.keys()) + ['All']],
-            value='All',
+            value='1',
             searchable=True,
             multi=True
         ),
@@ -141,7 +141,7 @@ def update_lines_graph(lineIds_value):
         #And set the figure layout
         fig.update_layout(
             title='LINES AND STOPS SELECTED MAP',
-            height=600,
+            height=500,
             margin=dict(r=0, l=0, t=0, b=0),
             hovermode='closest',
             showlegend=False,

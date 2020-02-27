@@ -23,7 +23,7 @@ app.index_string = '''
                     font-size: 30px;
                 }
                 .navlogo {
-                    background: linear-gradient(to left, #4f30a0, #9e2de2);
+                    background: linear-gradient(to left, white, #9e2de2);
                 }
             </style>
         {%favicon%}
@@ -33,29 +33,54 @@ app.index_string = '''
     <body class="body">
 
         <nav class="navbar navlogo" role="navigation" aria-label="main navigation">
+          
           <div class="navbar-brand">
-            <p class="navbar-item logo1">EMT BUSES</p>
+            <a class="navbar-item logo1" href="/">EMT BUSES</a>
+            <div class="navbar-burger burger" data-target="navMenu">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
           </div>
         
           <div id="navMenu" class="navbar-menu">
 
             <div class="navbar-start">
-              <a class="navbar-item" href="/">MAP</a>
+              <a class="navbar-item" href="/">LINES AND STOPS MAP</a>
               <a class="navbar-item" href="/apps/app1">LIVE BUSES OF LINE</a>
+              <a class="navbar-item" href="/apps/app2">DATA RETRIEVING MONITOR</a>
               <a class="navbar-item" href="/credits">Credits</a>
             </div>
+            
           </div>
         </nav>
         
         <script type="text/javascript">
-          (function() {
-            var burger = document.querySelector('.burger');
-            var nav = document.querySelector('#'+burger.dataset.target);
-            burger.addEventListener('click', function(){
-              burger.classList.toggle('is-active');
-              nav.classList.toggle('is-active');
+            document.addEventListener('DOMContentLoaded', () => {
+
+            // Get all "navbar-burger" elements
+            const $navbarBurgers = Array.prototype.slice.call(document.querySelectorAll('.navbar-burger'), 0);
+
+            // Check if there are any navbar burgers
+            if ($navbarBurgers.length > 0) {
+
+                // Add a click event on each of them
+                $navbarBurgers.forEach( el => {
+                    el.addEventListener('click', () => {
+
+                        // Get the target from the "data-target" attribute
+                        const target = el.dataset.target;
+                        const $target = document.getElementById(target);
+
+                        // Toggle the "is-active" class on both the "navbar-burger" and the "navbar-menu"
+                        el.classList.toggle('is-active');
+                        $target.classList.toggle('is-active');
+
+                    });
+                });
+            }
+
             });
-          })();
         </script>
 
         <section class="hero"
@@ -88,6 +113,8 @@ def display_page(pathname):
          return app_home.layout
     if pathname == '/apps/app1':
          return app1.layout
+    if pathname == '/apps/app2':
+         return app2.layout
     else:
         return app_credits.layout
 

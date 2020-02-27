@@ -19,14 +19,14 @@ import fiona
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-
+import random
 import datetime
 
 from app import app
 
-import random
 
-# CARGAMOS LOS DATOS
+
+# WE LOAD THE DATA
 stops = gpd.read_file('M6Data/stops.json')
 route_lines = gpd.read_file('M6Data/route_lines.json')
 with open('M6Data/line_stops_dict.json', 'r') as f:
@@ -46,7 +46,7 @@ layout = html.Div(className = '', children = [
         html.Div(className='box',id='live-update-graph'),
         dcc.Interval(
             id='interval-component',
-            interval=5*1000, # in milliseconds
+            interval=7.5*1000, # in milliseconds
             n_intervals=0
         )
     ])
@@ -243,7 +243,7 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
     keys = ['bus','line','direction','stop','isHead','destination','deviation','estimateArrive','DistanceBus']
 
     #List with all the stops in both directions
-    stop_codes = stops_dir1 + stops_dir2
+    stop_codes = list(set(stops_dir1 + stops_dir2))
     
     #Function to perform the requests asynchronously, performing them concurrently would be too slow
     async def get_data_asynchronous() :
@@ -270,10 +270,7 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
                     arrival_data = response.json()
                     if arrival_data['code'] == '98':
                         #Return the data gathered if the request that fails isnt the first
-                        if len(row_list) == 0 :
-                            return 'Hits of account spent'
-                        else :
-                            return [row_list,points_list,real_coords_list]
+                        return 'Hits of account spent'
                 else :
                     continue
 
@@ -284,12 +281,13 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
                     #Real coordinates provided by the API
                     real_coords_list.append(Point(bus['geometry']['coordinates']))
                     #We calculate the bus position depending on the direction it belongs to
-                    if bus['stop'] in stops_dir1 :
+                    if bus['destination'] == arrival_data['data'][0]['StopInfo'][0]['lines'][0]['nameB'] :
                         bus['direction'] = '1'
                         points_list.append(Point(point_by_distance_on_line(line1_geom,line1_length,bus['DistanceBus']/1000,stop_coords)))
                     else :
                         bus['direction'] = '2'
                         points_list.append(Point(point_by_distance_on_line(line2_geom,line2_length,bus['DistanceBus']/1000,stop_coords)))
+                        
                     values = [bus[key] for key in keys]
                     row_list.append(dict(zip(keys, values)))
                     
@@ -363,7 +361,15 @@ style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
               [Input(component_id = 'lineId-select',component_property = 'value'),
               Input(component_id = 'interval-component',component_property = 'n_intervals')])
 def update_graph_live(lineId_value,n_intervals):
-
+    '''
+    Function that updates the graph each x seconds depending on the value of lineId
+    
+        Parameters
+        ---
+        input_lineId_value: string
+            The line whose buses are going to be ploted
+    '''
+    try:
         lineId = lineId_value
         
         #We get the stops of the line from the dict
@@ -441,20 +447,31 @@ def update_graph_live(lineId_value,n_intervals):
                 hoverinfo='text'
             ))
             
-        
-        stops_of_lines = list(set(stops_dir1 + stops_dir2))
-        stops_selected = stops.loc[stops['stop_code'].isin(stops_of_lines)]
         #Add the stops to the figure
+        stops_selected1 = stops.loc[stops['stop_code'].isin(stops_dir1[1:])]
         fig.add_trace(go.Scattermapbox(
-            lat=stops_selected['geometry'].y,
-            lon=stops_selected['geometry'].x,
+            lat=stops_selected1['geometry'].y,
+            lon=stops_selected1['geometry'].x,
             mode='markers',
             marker=go.scattermapbox.Marker(
-                size=5,
-                color='green',
-                opacity=0.5
+                size=7,
+                color='rgb(108, 173, 245)',
+                opacity=0.7
             ),
-            text=stops_selected['stop_code'],
+            text=stops_selected1['stop_code'],
+            hoverinfo='text'
+        ))
+        stops_selected2 = stops.loc[stops['stop_code'].isin(stops_dir2[1:])]
+        fig.add_trace(go.Scattermapbox(
+            lat=stops_selected2['geometry'].y,
+            lon=stops_selected2['geometry'].x,
+            mode='markers',
+            marker=go.scattermapbox.Marker(
+                size=7,
+                color='rgb(243, 109, 90)',
+                opacity=0.7
+            ),
+            text=stops_selected2['stop_code'],
             hoverinfo='text'
         ))
         
@@ -483,7 +500,7 @@ def update_graph_live(lineId_value,n_intervals):
         #And set the figure layout
         fig.update_layout(
             title='REAL TIME POSITION OF THE BUSES OF LINE {}'.format(lineId),
-            height=600,
+            height=500,
             margin=dict(r=0, l=0, t=0, b=0),
             hovermode='closest',
             showlegend=False,
@@ -508,7 +525,6 @@ def update_graph_live(lineId_value,n_intervals):
             del buses_list[index]
             del dist_list[index]
         
-        
         #We create the figure object
         fig2 = go.Figure()
         fig2.add_trace(go.Bar(x=buses_list,
@@ -516,11 +532,11 @@ def update_graph_live(lineId_value,n_intervals):
             name='Error bar graph',
             marker_color='#2ca02c'
         ))
-        fig.update_layout(
-            height=600,
+        fig2.update_layout(
+            height=500,
             margin=dict(r=0, l=0, t=0, b=0),
             yaxis=dict(
-                title='Distance(meters)'
+                title='Distance(meters) between calculated distance and real one'
             )
         )
         
@@ -542,10 +558,6 @@ def update_graph_live(lineId_value,n_intervals):
                         'Error in calculated position:',
                         className = 'subtitle is-4'
                     ),
-                    html.H2(
-                        'distance(RealCoords,CalcCoords) in meters for pair "bus-(stop)"',
-                        className = 'subtitle is-5'
-                    ),
                     dcc.Graph(
                         id = 'graph2',
                         figure = fig2
@@ -553,3 +565,8 @@ def update_graph_live(lineId_value,n_intervals):
                 ])
             ]),
         ]
+    except ValueError :
+        return 'No active buses were found in the desired line - Maybe the line is not active at the moment'
+    except :
+        #If there is an error we ask for a valid line id
+        return 'Please select a lineId from the list'
