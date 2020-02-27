@@ -3,7 +3,7 @@ import dash_html_components as html
 from dash.dependencies import Input, Output
 
 from app import app
-from apps import app_home, app1, app_credits
+from apps import app_home, app1, app2, app_credits
 
 #APP INDEX STRING
 app.index_string = '''
@@ -48,7 +48,7 @@ app.index_string = '''
             <div class="navbar-start">
               <a class="navbar-item" href="/">LINES AND STOPS MAP</a>
               <a class="navbar-item" href="/apps/app1">LIVE BUSES OF LINE</a>
-              <a class="navbar-item" href="/apps/app2">DATA RETRIEVING MONITOR</a>
+              <a class="navbar-item" href="/apps/app2">DATA RETRIEVED MONITORING</a>
               <a class="navbar-item" href="/credits">Credits</a>
             </div>
             
