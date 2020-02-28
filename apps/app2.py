@@ -33,10 +33,13 @@ with open('M6Data/line_stops_dict.json', 'r') as f:
 #Load the buses dataframe and parse the dates
 buses_data = pd.read_csv('../../flash/EMTBuses/buses_data.csv')
 buses_data['datetime'] = pd.to_datetime(buses_data['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
+int_columns = ['stop','bus','real_coords','pos_in_burst','deviation','estimateArrive','DistanceBus','request_time']
+for column in int_columns :
+    buses_data[column] = pd.to_numeric(buses_data[column])
+
+#Values for components
 start_date = buses_data.iloc[0]['datetime']
 minutes_range = (datetime.datetime.now() - start_date).total_seconds() / 60.0
-estimateArrive_range = buses_data['estimateArrive'].max()
-DistanceBus_range = buses_data['DistanceBus'].max()
 lines_retrieved = ['1','82','F','G','U','132','N2','N6']
 buses_retrieved = buses_data['bus'].unique().tolist()
 stops_retrieved = buses_data['stop'].unique().tolist()
@@ -70,7 +73,7 @@ layout = html.Div(className = '', children = [
                     multi=True
                 )
             ]),
-            html.Div(className='column is-one-third',children = [
+            html.Div(className='column',children = [
                 html.Span('Select stops: ', className = 'tag is-light is-medium'),
                 dcc.Dropdown(
                     id="stops-select",
@@ -80,7 +83,7 @@ layout = html.Div(className = '', children = [
                     multi=True
                 )
             ]),
-            html.Div(className='column is-one-third',children = [
+            html.Div(className='column',children = [
                 html.Span('Select buses: ', className = 'tag is-light is-medium'),
                 dcc.Dropdown(
                     id="buses-select",
@@ -92,40 +95,63 @@ layout = html.Div(className = '', children = [
             ])   
         ]),
         html.Div(className='columns',children = [
-            html.Div(className='column is-half',children = [
-                html.Span('DistanceBus Range: ', className = 'tag is-light is-medium'),
+            html.Div(className='column is-narrow',children = [
+                dcc.RadioItems(
+                    id='distance-range-radio',
+                    options=[
+                        {'label': 'Show All', 'value': 'All'},
+                        {'label': 'Use range', 'value': 'Range'},
+                    ],
+                    value='All',
+                    labelStyle={'display': 'block'}
+                )  
+            ]),
+            html.Div(className='column',children = [
+                html.Span('DistanceBus Range (km): ', className = 'tag is-light is-medium'),
                 dcc.RangeSlider(
                     id='distance-range-slider',
                     marks = {
-                        i*DistanceBus_range/10: {
-                            'label' : '{}(km)'.format(round(i*(DistanceBus_range/10000),1)), 
+                        i*200 : {
+                            'label' : '{}'.format(i*2/10), 
                             'style' : {'font-size': '10px'}
-                        } for i in range(0, 10)
+                        } for i in range(0, 21)
                     },
-                    min=-1,
-                    max=DistanceBus_range,
-                    step=100,
-                    value=[0, DistanceBus_range]
+                    min=0,
+                    max=4000,
+                    step=1,
+                    value=[0, 4000]
                 )
             ]),
-            html.Div(className='column is-half',children = [
-                html.Span('ETA Range: ', className = 'tag is-light is-medium'),
+            html.Div(className='column is-narrow',children = [
+                dcc.RadioItems(
+                    id='eta-range-radio',
+                    options=[
+                        {'label': 'Show All', 'value': 'All'},
+                        {'label': 'Use range', 'value': 'Range'},
+                    ],
+                    value='All',
+                    labelStyle={'display': 'block'}
+                )  
+            ]),
+            html.Div(className='column',children = [
+                html.Span('ETA Range (min): ', className = 'tag is-light is-medium'),
                 dcc.RangeSlider(
                     id='eta-range-slider',
                     marks = {
-                        i*estimateArrive_range/10: {
-                            'label' : '{}(min)'.format(round(i*(estimateArrive_range/600),1)), 
+                        i*180 : {
+                            'label' : '{}'.format(i*3), 
                             'style' : {'font-size': '10px'}
-                        } for i in range(0, 10)
+                        } for i in range(0, 21)
                     },
                     min=0,
-                    max=estimateArrive_range,
+                    max=3600,
                     step=1,
-                    value=[0, estimateArrive_range]
+                    value=[0, 3600]
                 )
             ]) 
         ]),
-        html.Div(className='box',id='live-update-data')
+        html.Div(className='box',id='selected-data'),
+        html.Div(className='box',id='figs-selected-data')
     ])
     
 ])
@@ -134,21 +160,27 @@ layout = html.Div(className = '', children = [
 
 # CALLBACK 1 - Retrieved data
 @app.callback([
-        Output(component_id = 'live-update-data',component_property = 'children')
+        Output(component_id = 'selected-data',component_property = 'children')
     ],
     [
         Input('time-range-slider', 'value'),
         Input('lines-select', 'value'),
         Input('stops-select', 'value'),
-        Input('buses-select', 'value')
+        Input('buses-select', 'value'),
+        Input('distance-range-radio', 'value'),
+        Input('distance-range-slider', 'value'),
+        Input('eta-range-radio', 'value'),
+        Input('eta-range-slider', 'value')
     ])
 
-def update_graph_live(time_range,lines_selected,stops_selected,buses_selected):
+def update_graph_live(time_range,lines_selected,stops_selected,buses_selected,distance_radio,distance_range,eta_radio,eta_range):
             
         try :
             showAllLines = False
             showAllStops = False
             showAllBuses = False
+            showAllDistances = False
+            showAllEtas = False
 
             #We add the minutes and get the start and end of the time interval
             start_interval = start_date + timedelta(minutes=time_range[0])
@@ -165,7 +197,7 @@ def update_graph_live(time_range,lines_selected,stops_selected,buses_selected):
                 if 'All' in stops_selected :
                     showAllStops = True
             else :
-                if buses_selected == 'All' :
+                if stops_selected == 'All' :
                     showAllStops = True
 
             if type(buses_selected) is list:
@@ -174,6 +206,12 @@ def update_graph_live(time_range,lines_selected,stops_selected,buses_selected):
             else :
                 if buses_selected == 'All' :
                     showAllBuses = True
+                    
+            if distance_radio == 'All' :
+                showAllDistances = True
+            
+            if eta_radio == 'All' :
+                showAllEtas = True
 
             #Get the rows that are inside the time interval
             mask = (buses_data['datetime'] > start_interval) & (buses_data['datetime'] < end_interval)
@@ -191,43 +229,131 @@ def update_graph_live(time_range,lines_selected,stops_selected,buses_selected):
                 if type(stops_selected) is list:
                     buses_data_reduced = buses_data_reduced.loc[buses_data_reduced['stop'].isin(stops_selected)]
                 else :
-                    buses_data_reduced = buses_data_reduced.loc[buses_data_reduced['stop']==stops_selected]
+                    buses_data_reduced = buses_data_reduced.loc[buses_data_reduced['stop']==int(stops_selected)]
                     
             #Get the rows with the buses selected
             if not showAllBuses :
                 if type(buses_selected) is list:
                     buses_data_reduced = buses_data_reduced.loc[buses_data_reduced['bus'].isin(buses_selected)]
                 else :
-                    buses_data_reduced = buses_data_reduced.loc[buses_data_reduced['bus']==buses_selected]
-
+                    buses_data_reduced = buses_data_reduced.loc[buses_data_reduced['bus']==int(buses_selected)]
+            
+            #Get the rows with the distances selected
+            if not showAllDistances :
+                    buses_data_reduced = buses_data_reduced.loc[buses_data_reduced['DistanceBus'].between(distance_range[0],distance_range[1])]
+            
+            #Get the rows with the distances selected
+            if not showAllEtas :
+                    buses_data_reduced = buses_data_reduced.loc[buses_data_reduced['estimateArrive'].between(eta_range[0],eta_range[1])]
+                    
+            #If no rows suit in the selection
+            if (buses_data_reduced.shape[0] == 0) | (buses_data_reduced.shape[0] == 0) :
+                return [
+                    'No rows found for the selection'
+                ]
+            
             #And finally we return the graph element
             return [
                 html.Div(className='',children=[
                     html.Div(className='',children=[
-                        dcc.Loading(type = 'graph', children = [
-                            html.H2(
-                                'Showing data from: {} to: {}'.format(start_interval.strftime("%d-%m-%Y (%H:%M)"),end_interval.strftime("%d-%m-%Y (%H:%M)")),
-                                className = 'subtitle is-4'
-                            ),
-                            dash_table.DataTable(
-                                id='table',
-                                columns=[{"name": i, "id": i} for i in buses_data_reduced.columns],
-                                data=buses_data_reduced.to_dict('records'),
-                                page_size= 15,
-                                style_table={'overflowX': 'scroll'},
-                                style_cell={
-                                    'minWidth': '0px', 'maxWidth': '180px',
-                                    'overflow': 'hidden',
-                                    'textOverflow': 'ellipsis',
-                                }
-                            )
-                        ])
+                        html.H2(
+                            'Showing data from: {} to: {}'.format(start_interval.strftime("%d-%m-%Y (%H:%M)"),end_interval.strftime("%d-%m-%Y (%H:%M)")),
+                            className = 'subtitle is-4'
+                        ),
+                        dash_table.DataTable(
+                            id='table',
+                            columns=[{"name": i, "id": i} for i in buses_data_reduced.columns],
+                            data=buses_data_reduced.to_dict('records'),
+                            page_size= 15,
+                            style_table={'overflowX': 'scroll'},
+                            style_cell={
+                                'minWidth': '0px', 'maxWidth': '180px',
+                                'overflow': 'hidden',
+                                'textOverflow': 'ellipsis',
+                            },
+                            editable=True,
+                            filter_action="native",
+                            sort_action="native",
+                            sort_mode="multi",
+                            row_deletable=True
+                        )
                     ])
                 ])
             ]
-        
-        except : 
+        except :
             return [
                 'No rows found for the selection'
             ]
         
+
+
+# CALLBACK 2 - Representations of selected data
+@app.callback(
+        Output('figs-selected-data', "children"),
+    [
+        Input('table', "derived_virtual_data")
+    ])
+def update_graphs(rows):
+
+    if len(rows) < 500 :
+        buses_data_reduced = pd.DataFrame(rows)
+        buses_data_reduced['datetime'] = pd.to_datetime(buses_data_reduced['datetime'], format='%Y-%m-%dT%H:%M:%S.%f')
+        
+        #ETAs Figures
+        first_stop = buses_data_reduced['stop'].unique().tolist()[0]
+        fs_df = buses_data_reduced.loc[buses_data_reduced['stop'] == first_stop]
+        fs_buses = fs_df['bus'].unique().tolist()
+        
+        fig1 = go.Figure() #Distances of bus to stop
+        fig2 = go.Figure() #ETAs
+        fig3 = go.Figure() #Error in ETAs
+        for bus in fs_buses :
+            fs_bus_df = fs_df.loc[fs_df['bus']==bus]
+            line = fs_bus_df.iloc[0]['line']
+            bus_times = fs_bus_df['datetime'].tolist()
+            last_time = bus_times[-1]
+            bus_dists = [dist/1000 for dist in fs_bus_df['DistanceBus'].tolist()]
+            bus_etas = [eta/60 for eta in fs_bus_df['estimateArrive'].tolist()]
+            bus_etas_error = []
+            if bus_etas[-1] <= 1 : 
+                for i in range(len(bus_etas)) :
+                    error = (bus_times[i] + timedelta(minutes=bus_etas[i])) - last_time
+                    error_mins = error.total_seconds()/60
+                    bus_etas_error.append(error_mins)
+                
+            # Create and style traces
+            fig1.add_trace(go.Scatter(x=bus_times, y=bus_dists, name='{}-{}'.format(line,bus),
+                                     line=dict(width=4)))
+            fig2.add_trace(go.Scatter(x=bus_times, y=bus_etas, name='{}-{}'.format(line,bus),
+                                     line=dict(width=4)))
+            fig3.add_trace(go.Scatter(x=bus_times, y=bus_etas_error, name='{}-{}'.format(line,bus),
+                                     line=dict(width=4)))
+        # Edit the layout
+        fig1.update_layout(title='Distance remaining for the buses heading stop {}'.format(first_stop),
+                           xaxis_title='Time',
+                           yaxis_title='DISTANCE (km)')
+        # Edit the layout
+        fig2.update_layout(title='ETAs for the buses heading stop {}'.format(first_stop),
+                           xaxis_title='Time',
+                           yaxis_title='ETA (minutes)')
+        # Edit the layout
+        fig3.update_layout(title='Error in ETAs for the buses heading stop {}. Positive or negative if it arrives later or sooner than expected, respectively'.format(first_stop),
+                           xaxis_title='Time',
+                           yaxis_title='ETA ERROR (minutes)')
+        
+        return [
+            dcc.Graph(
+                id='fig1',
+                figure=fig1
+            ),
+            dcc.Graph(
+                id='fig2',
+                figure=fig2
+            ),
+            dcc.Graph(
+                id='fig3',
+                figure=fig3
+            )
+        ]
+    else :
+        return 'Selected data is too large to represent. Select a smaller slice'
