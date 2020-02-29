@@ -494,16 +494,18 @@ def main():
         else : 
             #Retrieve data from lines 69,82,132 - 185 Stops
             if time_in_range(start_time_day,end_time_day,now.time()) :
-                print('Retrieve data from lines 69,82,132 - 185 Stops - {}\n'.format(datetime.datetime.now()))
-                requested_lines = ['1','82','132']
-                rt = RepeatedTimer(55, get_arrival_data, requested_lines)
-                rt_started = True
+                if not rt_started :
+                    print('Retrieve data from lines 69,82,132 - 185 Stops - {}\n'.format(datetime.datetime.now()))
+                    requested_lines = ['1','82','132']
+                    rt = RepeatedTimer(55, get_arrival_data, requested_lines)
+                    rt_started = True
             #Retrieve data from lines 502,506 - 131 Stops
             elif time_in_range(start_time_night,end_time_night,now.time()) :
-                print('Retrieve data from lines 502,506 - 131 Stops - {}\n'.format(datetime.datetime.now()))
-                requested_lines = ['502','506']
-                rt = RepeatedTimer(70, get_arrival_data, requested_lines)
-                rt_started = True
+                if not rt_started :
+                    print('Retrieve data from lines 502,506 - 131 Stops - {}\n'.format(datetime.datetime.now()))
+                    requested_lines = ['502','506']
+                    rt = RepeatedTimer(70, get_arrival_data, requested_lines)
+                    rt_started = True
             else :
                 #Stop timer if it exists
                 if rt_started :
