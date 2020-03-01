@@ -1,0 +1,69 @@
+    1: """Vanilla HTML components for Dash"""
+       
+    1: from __future__ import print_function as _
+       
+    1: import json
+    1: import os as _os
+    1: import sys as _sys
+    1: import dash as _dash
+       
+    1: _basepath = _os.path.dirname(__file__)
+    1: _filepath = _os.path.abspath(_os.path.join(_basepath, 'package-info.json'))
+    1: with open(_filepath) as f:
+    1:     package = json.load(f)
+       
+    1: package_name = package['name'].replace(' ', '_').replace('-', '_')
+    1: __version__ = package['version']
+       
+       # Module imports trigger a dash.development import, need to check this first
+    1: if not hasattr(_dash, 'development'):
+           print(
+               "Dash was not successfully imported. Make sure you don't have a file "
+               "named \n'dash.py' in your current directory.", file=_sys.stderr)
+           _sys.exit(1)
+       
+       # Must update to dash>=0.22.0 to use this version of dash-html-components
+    1: if not hasattr(_dash.development.base_component, '_explicitize_args'):
+           print("Please update the `dash` module to >= 0.22.0 to use this "
+                 "version of dash_html_components.\n"
+                 "You are using version {:s}".format(_dash.version.__version__),
+                 file=_sys.stderr)
+           _sys.exit(1)
+       
+       
+    1: from ._imports_ import *
+    1: from ._imports_ import __all__
+       
+       
+    1: _current_path = _os.path.dirname(_os.path.abspath(__file__))
+       
+       
+    1: _this_module = _sys.modules[__name__]
+       
+       
+       _js_dist = [
+           {
+    1:         "relative_package_path": '{}.min.js'.format(__name__),
+               "external_url": (
+    1:             "https://unpkg.com/dash-html-components@{}"
+                   "/dash_html_components/dash_html_components.min.js"
+    1:         ).format(__version__),
+    1:         "namespace": "dash_html_components"
+           },
+           {
+    1:         'relative_package_path': '{}.min.js.map'.format(__name__),
+               'external_url': (
+    1:             'https://unpkg.com/dash-html-components@{}'
+                   '/dash_html_components/dash_html_components.min.js.map'
+    1:         ).format(__version__),
+    1:         'namespace': 'dash_html_components',
+    1:         'dynamic': True
+           }
+       ]
+       
+    1: _css_dist = []
+       
+       
+  132: for _component in __all__:
+  131:     setattr(locals()[_component], '_js_dist', _js_dist)
+  131:     setattr(locals()[_component], '_css_dist', _css_dist)

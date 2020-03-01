@@ -1,0 +1,18 @@
+    1: try:
+    1:     import simplejson as json
+    1: except ImportError:
+    1:     import json
+       
+       
+    2: class _CompactJSON(object):
+    1:     """Wrapper around json module that strips whitespace."""
+       
+    1:     @staticmethod
+           def loads(payload):
+               return json.loads(payload)
+       
+    1:     @staticmethod
+           def dumps(obj, **kwargs):
+               kwargs.setdefault("ensure_ascii", False)
+               kwargs.setdefault("separators", (",", ":"))
+               return json.dumps(obj, **kwargs)

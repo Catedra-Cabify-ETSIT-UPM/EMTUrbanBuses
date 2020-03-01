@@ -1,0 +1,173 @@
+       # This file is dual licensed under the terms of the Apache License, Version
+       # 2.0, and the BSD License. See the LICENSE file in the root of this repository
+       # for complete details.
+       
+    1: from __future__ import absolute_import, division, print_function
+       
+    1: import abc
+    1: import binascii
+    1: import inspect
+    1: import sys
+    1: import warnings
+       
+       
+       # We use a UserWarning subclass, instead of DeprecationWarning, because CPython
+       # decided deprecation warnings should be invisble by default.
+    2: class CryptographyDeprecationWarning(UserWarning):
+    1:     pass
+       
+       
+       # Several APIs were deprecated with no specific end-of-life date because of the
+       # ubiquity of their use. They should not be removed until we agree on when that
+       # cycle ends.
+    1: PersistentlyDeprecated2017 = CryptographyDeprecationWarning
+    1: PersistentlyDeprecated2018 = CryptographyDeprecationWarning
+    1: DeprecatedIn25 = CryptographyDeprecationWarning
+    1: DeprecatedIn27 = CryptographyDeprecationWarning
+       
+       
+    1: def _check_bytes(name, value):
+           if not isinstance(value, bytes):
+               raise TypeError("{} must be bytes".format(name))
+       
+       
+    1: def _check_byteslike(name, value):
+           try:
+               memoryview(value)
+           except TypeError:
+               raise TypeError("{} must be bytes-like".format(name))
+       
+       
+    1: def read_only_property(name):
+  410:     return property(lambda self: getattr(self, name))
+       
+       
+    1: def register_interface(iface):
+  164:     def register_decorator(klass):
+  164:         verify_interface(iface, klass)
+  164:         iface.register(klass)
+  164:         return klass
+  164:     return register_decorator
+       
+       
+    1: def register_interface_if(predicate, iface):
+    1:     def register_decorator(klass):
+    1:         if predicate:
+    1:             verify_interface(iface, klass)
+    1:             iface.register(klass)
+    1:         return klass
+    1:     return register_decorator
+       
+       
+    1: if hasattr(int, "from_bytes"):
+    1:     int_from_bytes = int.from_bytes
+       else:
+           def int_from_bytes(data, byteorder, signed=False):
+               assert byteorder == 'big'
+               assert not signed
+       
+               return int(binascii.hexlify(data), 16)
+       
+       
+    1: if hasattr(int, "to_bytes"):
+    1:     def int_to_bytes(integer, length=None):
+               return integer.to_bytes(
+                   length or (integer.bit_length() + 7) // 8 or 1, 'big'
+               )
+       else:
+           def int_to_bytes(integer, length=None):
+               hex_string = '%x' % integer
+               if length is None:
+                   n = len(hex_string)
+               else:
+                   n = length * 2
+               return binascii.unhexlify(hex_string.zfill(n + (n & 1)))
+       
+       
+    2: class InterfaceNotImplemented(Exception):
+    1:     pass
+       
+       
+    1: if hasattr(inspect, "signature"):
+    1:     signature = inspect.signature
+       else:
+           signature = inspect.getargspec
+       
+       
+    1: def verify_interface(iface, klass):
+  568:     for method in iface.__abstractmethods__:
+  403:         if not hasattr(klass, method):
+                   raise InterfaceNotImplemented(
+                       "{} is missing a {!r} method".format(klass, method)
+                   )
+  403:         if isinstance(getattr(iface, method), abc.abstractproperty):
+                   # Can't properly verify these yet.
+  220:             continue
+  183:         sig = signature(getattr(iface, method))
+  183:         actual = signature(getattr(klass, method))
+  183:         if sig != actual:
+                   raise InterfaceNotImplemented(
+                       "{}.{}'s signature differs from the expected. Expected: "
+                       "{!r}. Received: {!r}".format(
+                           klass, method, sig, actual
+                       )
+                   )
+       
+       
+       # No longer needed as of 2.2, but retained because we have external consumers
+       # who use it.
+    1: def bit_length(x):
+           return x.bit_length()
+       
+       
+    2: class _DeprecatedValue(object):
+    1:     def __init__(self, value, message, warning_class):
+   12:         self.value = value
+   12:         self.message = message
+   12:         self.warning_class = warning_class
+       
+       
+    2: class _ModuleWithDeprecations(object):
+    1:     def __init__(self, module):
+    2:         self.__dict__["_module"] = module
+       
+    1:     def __getattr__(self, attr):
+   28:         obj = getattr(self._module, attr)
+   26:         if isinstance(obj, _DeprecatedValue):
+                   warnings.warn(obj.message, obj.warning_class, stacklevel=2)
+                   obj = obj.value
+   26:         return obj
+       
+    1:     def __setattr__(self, attr, value):
+               setattr(self._module, attr, value)
+       
+    1:     def __delattr__(self, attr):
+               obj = getattr(self._module, attr)
+               if isinstance(obj, _DeprecatedValue):
+                   warnings.warn(obj.message, obj.warning_class, stacklevel=2)
+       
+               delattr(self._module, attr)
+       
+    1:     def __dir__(self):
+               return ["_module"] + dir(self._module)
+       
+       
+    1: def deprecated(value, module_name, message, warning_class):
+   12:     module = sys.modules[module_name]
+   12:     if not isinstance(module, _ModuleWithDeprecations):
+    2:         sys.modules[module_name] = _ModuleWithDeprecations(module)
+   12:     return _DeprecatedValue(value, message, warning_class)
+       
+       
+    1: def cached_property(func):
+    7:     cached_name = "_cached_{}".format(func)
+    7:     sentinel = object()
+       
+    7:     def inner(instance):
+    1:         cache = getattr(instance, cached_name, sentinel)
+    1:         if cache is not sentinel:
+                   return cache
+    1:         result = func(instance)
+    1:         setattr(instance, cached_name, result)
+    1:         return result
+    7:     return property(inner)

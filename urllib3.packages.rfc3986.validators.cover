@@ -1,0 +1,450 @@
+       # -*- coding: utf-8 -*-
+       # Copyright (c) 2017 Ian Stapleton Cordasco
+       # Licensed under the Apache License, Version 2.0 (the "License");
+       # you may not use this file except in compliance with the License.
+       # You may obtain a copy of the License at
+       #
+       #    http://www.apache.org/licenses/LICENSE-2.0
+       #
+       # Unless required by applicable law or agreed to in writing, software
+       # distributed under the License is distributed on an "AS IS" BASIS,
+       # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+       # implied.
+       # See the License for the specific language governing permissions and
+       # limitations under the License.
+    1: """Module containing the validation logic for rfc3986."""
+    1: from . import exceptions
+    1: from . import misc
+    1: from . import normalizers
+       
+       
+    2: class Validator(object):
+           """Object used to configure validation of all objects in rfc3986.
+       
+           .. versionadded:: 1.0
+       
+           Example usage::
+       
+                >>> from rfc3986 import api, validators
+                >>> uri = api.uri_reference('https://github.com/')
+                >>> validator = validators.Validator().require_presence_of(
+                ...    'scheme', 'host', 'path',
+                ... ).allow_schemes(
+                ...    'http', 'https',
+                ... ).allow_hosts(
+                ...    '127.0.0.1', 'github.com',
+                ... )
+                >>> validator.validate(uri)
+                >>> invalid_uri = rfc3986.uri_reference('imap://mail.google.com')
+                >>> validator.validate(invalid_uri)
+                Traceback (most recent call last):
+                ...
+                rfc3986.exceptions.MissingComponentError: ('path was required but
+                missing', URIReference(scheme=u'imap', authority=u'mail.google.com',
+                path=None, query=None, fragment=None), ['path'])
+       
+    1:     """
+       
+    1:     COMPONENT_NAMES = frozenset([
+    1:         'scheme',
+    1:         'userinfo',
+    1:         'host',
+    1:         'port',
+    1:         'path',
+    1:         'query',
+    1:         'fragment',
+           ])
+       
+    1:     def __init__(self):
+               """Initialize our default validations."""
+    2:         self.allowed_schemes = set()
+    2:         self.allowed_hosts = set()
+    2:         self.allowed_ports = set()
+    2:         self.allow_password = True
+               self.required_components = {
+    2:             'scheme': False,
+    2:             'userinfo': False,
+    2:             'host': False,
+    2:             'port': False,
+    2:             'path': False,
+    2:             'query': False,
+    2:             'fragment': False,
+               }
+    2:         self.validated_components = self.required_components.copy()
+       
+    1:     def allow_schemes(self, *schemes):
+               """Require the scheme to be one of the provided schemes.
+       
+               .. versionadded:: 1.0
+       
+               :param schemes:
+                   Schemes, without ``://`` that are allowed.
+               :returns:
+                   The validator instance.
+               :rtype:
+                   Validator
+               """
+               for scheme in schemes:
+                   self.allowed_schemes.add(normalizers.normalize_scheme(scheme))
+               return self
+       
+    1:     def allow_hosts(self, *hosts):
+               """Require the host to be one of the provided hosts.
+       
+               .. versionadded:: 1.0
+       
+               :param hosts:
+                   Hosts that are allowed.
+               :returns:
+                   The validator instance.
+               :rtype:
+                   Validator
+               """
+               for host in hosts:
+                   self.allowed_hosts.add(normalizers.normalize_host(host))
+               return self
+       
+    1:     def allow_ports(self, *ports):
+               """Require the port to be one of the provided ports.
+       
+               .. versionadded:: 1.0
+       
+               :param ports:
+                   Ports that are allowed.
+               :returns:
+                   The validator instance.
+               :rtype:
+                   Validator
+               """
+               for port in ports:
+                   port_int = int(port, base=10)
+                   if 0 <= port_int <= 65535:
+                       self.allowed_ports.add(port)
+               return self
+       
+    1:     def allow_use_of_password(self):
+               """Allow passwords to be present in the URI.
+       
+               .. versionadded:: 1.0
+       
+               :returns:
+                   The validator instance.
+               :rtype:
+                   Validator
+               """
+               self.allow_password = True
+               return self
+       
+    1:     def forbid_use_of_password(self):
+               """Prevent passwords from being included in the URI.
+       
+               .. versionadded:: 1.0
+       
+               :returns:
+                   The validator instance.
+               :rtype:
+                   Validator
+               """
+               self.allow_password = False
+               return self
+       
+    1:     def check_validity_of(self, *components):
+               """Check the validity of the components provided.
+       
+               This can be specified repeatedly.
+       
+               .. versionadded:: 1.1
+       
+               :param components:
+                   Names of components from :attr:`Validator.COMPONENT_NAMES`.
+               :returns:
+                   The validator instance.
+               :rtype:
+                   Validator
+               """
+   18:         components = [c.lower() for c in components]
+   16:         for component in components:
+   14:             if component not in self.COMPONENT_NAMES:
+                       raise ValueError(
+                           '"{}" is not a valid component'.format(component)
+                       )
+   18:         self.validated_components.update({
+   16:             component: True for component in components
+               })
+    2:         return self
+       
+    1:     def require_presence_of(self, *components):
+               """Require the components provided.
+       
+               This can be specified repeatedly.
+       
+               .. versionadded:: 1.0
+       
+               :param components:
+                   Names of components from :attr:`Validator.COMPONENT_NAMES`.
+               :returns:
+                   The validator instance.
+               :rtype:
+                   Validator
+               """
+               components = [c.lower() for c in components]
+               for component in components:
+                   if component not in self.COMPONENT_NAMES:
+                       raise ValueError(
+                           '"{}" is not a valid component'.format(component)
+                       )
+               self.required_components.update({
+                   component: True for component in components
+               })
+               return self
+       
+    1:     def validate(self, uri):
+               """Check a URI for conditions specified on this validator.
+       
+               .. versionadded:: 1.0
+       
+               :param uri:
+                   Parsed URI to validate.
+               :type uri:
+                   rfc3986.uri.URIReference
+               :raises MissingComponentError:
+                   When a required component is missing.
+               :raises UnpermittedComponentError:
+                   When a component is not one of those allowed.
+               :raises PasswordForbidden:
+                   When a password is present in the userinfo component but is
+                   not permitted by configuration.
+               :raises InvalidComponentsError:
+                   When a component was found to be invalid.
+               """
+    2:         if not self.allow_password:
+                   check_password(uri)
+       
+               required_components = [
+   18:             component
+   16:             for component, required in self.required_components.items()
+   14:             if required
+               ]
+               validated_components = [
+   18:             component
+   16:             for component, required in self.validated_components.items()
+   14:             if required
+               ]
+    2:         if required_components:
+                   ensure_required_components_exist(uri, required_components)
+    2:         if validated_components:
+    2:             ensure_components_are_valid(uri, validated_components)
+       
+    2:         ensure_one_of(self.allowed_schemes, uri, 'scheme')
+    2:         ensure_one_of(self.allowed_hosts, uri, 'host')
+    2:         ensure_one_of(self.allowed_ports, uri, 'port')
+       
+       
+    1: def check_password(uri):
+           """Assert that there is no password present in the uri."""
+           userinfo = uri.userinfo
+           if not userinfo:
+               return
+           credentials = userinfo.split(':', 1)
+           if len(credentials) <= 1:
+               return
+           raise exceptions.PasswordForbidden(uri)
+       
+       
+    1: def ensure_one_of(allowed_values, uri, attribute):
+           """Assert that the uri's attribute is one of the allowed values."""
+    6:     value = getattr(uri, attribute)
+    6:     if value is not None and allowed_values and value not in allowed_values:
+               raise exceptions.UnpermittedComponentError(
+                   attribute, value, allowed_values,
+               )
+       
+       
+    1: def ensure_required_components_exist(uri, required_components):
+           """Assert that all required components are present in the URI."""
+           missing_components = sorted([
+               component
+               for component in required_components
+               if getattr(uri, component) is None
+           ])
+           if missing_components:
+               raise exceptions.MissingComponentError(uri, *missing_components)
+       
+       
+    1: def is_valid(value, matcher, require):
+           """Determine if a value is valid based on the provided matcher.
+       
+           :param str value:
+               Value to validate.
+           :param matcher:
+               Compiled regular expression to use to validate the value.
+           :param require:
+               Whether or not the value is required.
+           """
+   10:     if require:
+               return (value is not None
+                       and matcher.match(value))
+       
+           # require is False and value is not None
+   10:     return value is None or matcher.match(value)
+       
+       
+    1: def authority_is_valid(authority, host=None, require=False):
+           """Determine if the authority string is valid.
+       
+           :param str authority:
+               The authority to validate.
+           :param str host:
+               (optional) The host portion of the authority to validate.
+           :param bool require:
+               (optional) Specify if authority must not be None.
+           :returns:
+               ``True`` if valid, ``False`` otherwise
+           :rtype:
+               bool
+           """
+           validated = is_valid(authority, misc.SUBAUTHORITY_MATCHER, require)
+           if validated and host is not None:
+               return host_is_valid(host, require)
+           return validated
+       
+       
+    1: def host_is_valid(host, require=False):
+           """Determine if the host string is valid.
+       
+           :param str host:
+               The host to validate.
+           :param bool require:
+               (optional) Specify if host must not be None.
+           :returns:
+               ``True`` if valid, ``False`` otherwise
+           :rtype:
+               bool
+           """
+    2:     validated = is_valid(host, misc.HOST_MATCHER, require)
+    2:     if validated and host is not None and misc.IPv4_MATCHER.match(host):
+               return valid_ipv4_host_address(host)
+    2:     elif validated and host is not None and misc.IPv6_MATCHER.match(host):
+               return misc.IPv6_NO_RFC4007_MATCHER.match(host) is not None
+    2:     return validated
+       
+       
+    1: def scheme_is_valid(scheme, require=False):
+           """Determine if the scheme is valid.
+       
+           :param str scheme:
+               The scheme string to validate.
+           :param bool require:
+               (optional) Set to ``True`` to require the presence of a scheme.
+           :returns:
+               ``True`` if the scheme is valid. ``False`` otherwise.
+           :rtype:
+               bool
+           """
+    2:     return is_valid(scheme, misc.SCHEME_MATCHER, require)
+       
+       
+    1: def path_is_valid(path, require=False):
+           """Determine if the path component is valid.
+       
+           :param str path:
+               The path string to validate.
+           :param bool require:
+               (optional) Set to ``True`` to require the presence of a path.
+           :returns:
+               ``True`` if the path is valid. ``False`` otherwise.
+           :rtype:
+               bool
+           """
+    2:     return is_valid(path, misc.PATH_MATCHER, require)
+       
+       
+    1: def query_is_valid(query, require=False):
+           """Determine if the query component is valid.
+       
+           :param str query:
+               The query string to validate.
+           :param bool require:
+               (optional) Set to ``True`` to require the presence of a query.
+           :returns:
+               ``True`` if the query is valid. ``False`` otherwise.
+           :rtype:
+               bool
+           """
+    2:     return is_valid(query, misc.QUERY_MATCHER, require)
+       
+       
+    1: def fragment_is_valid(fragment, require=False):
+           """Determine if the fragment component is valid.
+       
+           :param str fragment:
+               The fragment string to validate.
+           :param bool require:
+               (optional) Set to ``True`` to require the presence of a fragment.
+           :returns:
+               ``True`` if the fragment is valid. ``False`` otherwise.
+           :rtype:
+               bool
+           """
+    2:     return is_valid(fragment, misc.FRAGMENT_MATCHER, require)
+       
+       
+    1: def valid_ipv4_host_address(host):
+           """Determine if the given host is a valid IPv4 address."""
+           # If the host exists, and it might be IPv4, check each byte in the
+           # address.
+           return all([0 <= int(byte, base=10) <= 255 for byte in host.split('.')])
+       
+       
+       _COMPONENT_VALIDATORS = {
+    1:     'scheme': scheme_is_valid,
+    1:     'path': path_is_valid,
+    1:     'query': query_is_valid,
+    1:     'fragment': fragment_is_valid,
+       }
+       
+    1: _SUBAUTHORITY_VALIDATORS = set(['userinfo', 'host', 'port'])
+       
+       
+    1: def subauthority_component_is_valid(uri, component):
+           """Determine if the userinfo, host, and port are valid."""
+    6:     try:
+    6:         subauthority_dict = uri.authority_info()
+           except exceptions.InvalidAuthority:
+               return False
+       
+           # If we can parse the authority into sub-components and we're not
+           # validating the port, we can assume it's valid.
+    6:     if component == 'host':
+    2:         return host_is_valid(subauthority_dict['host'])
+    4:     elif component != 'port':
+    2:         return True
+       
+    2:     try:
+    2:         port = int(subauthority_dict['port'])
+    2:     except TypeError:
+               # If the port wasn't provided it'll be None and int(None) raises a
+               # TypeError
+    2:         return True
+       
+           return (0 <= port <= 65535)
+       
+       
+    1: def ensure_components_are_valid(uri, validated_components):
+           """Assert that all components are valid in the URI."""
+    2:     invalid_components = set([])
+   16:     for component in validated_components:
+   14:         if component in _SUBAUTHORITY_VALIDATORS:
+    6:             if not subauthority_component_is_valid(uri, component):
+                       invalid_components.add(component)
+                   # Python's peephole optimizer means that while this continue *is*
+                   # actually executed, coverage.py cannot detect that. See also,
+                   # https://bitbucket.org/ned/coveragepy/issues/198/continue-marked-as-not-covered
+                   continue  # nocov: Python 2.7, 3.3, 3.4
+       
+    8:         validator = _COMPONENT_VALIDATORS[component]
+    8:         if not validator(getattr(uri, component)):
+                   invalid_components.add(component)
+       
+    2:     if invalid_components:
+               raise exceptions.InvalidComponentsError(uri, *invalid_components)

@@ -1,0 +1,8 @@
+    1: """Interface to the Expat non-validating XML parser."""
+    1: import sys
+       
+    1: from pyexpat import *
+       
+       # provide pyexpat submodules as xml.parsers.expat submodules
+    1: sys.modules['xml.parsers.expat.model'] = model
+    1: sys.modules['xml.parsers.expat.errors'] = errors

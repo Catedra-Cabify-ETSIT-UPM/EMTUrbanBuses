@@ -1,0 +1,204 @@
+       # -*- coding: utf-8 -*-
+    1: from __future__ import unicode_literals
+    1: import shlex
+    1: import sys
+    1: import uuid
+    1: import hashlib
+    1: import collections
+    1: import subprocess
+    1: import logging
+    1: from io import open  # pylint: disable=redefined-builtin
+    1: from functools import wraps
+    1: import future.utils as utils
+    1: from . import exceptions
+       
+    1: logger = logging.getLogger()
+       
+       
+    1: def interpolate_str(template, **data):
+           s = template
+           for k, v in data.items():
+               key = "{%" + k + "%}"
+               s = s.replace(key, v)
+           return s
+       
+       
+    1: def format_tag(tag_name, attributes, inner="", closed=False, opened=False):
+           tag = "<{tag} {attributes}"
+           if closed:
+               tag += "/>"
+           elif opened:
+               tag += ">"
+           else:
+               tag += ">" + inner + "</{tag}>"
+           return tag.format(
+               tag=tag_name,
+               attributes=" ".join(
+                   ['{}="{}"'.format(k, v) for k, v in attributes.items()]
+               ),
+           )
+       
+       
+    1: def generate_hash():
+    1:     return str(uuid.uuid4().hex).strip("-")
+       
+       
+    1: def get_asset_path(requests_pathname, asset_path, asset_url_path):
+       
+           return "/".join(
+               [
+                   # Only take the first part of the pathname
+                   requests_pathname.rstrip("/"),
+                   asset_url_path,
+                   asset_path,
+               ]
+           )
+       
+       
+    1: def get_relative_path(requests_pathname, path):
+           if requests_pathname == '/' and path == '':
+               return '/'
+           elif requests_pathname != '/' and path == '':
+               return requests_pathname
+           elif not path.startswith('/'):
+               raise exceptions.UnsupportedRelativePath(
+                   "Paths that aren't prefixed with a leading / are not supported.\n" +
+                   "You supplied: {}".format(path)
+               )
+           return "/".join(
+               [
+                   requests_pathname.rstrip("/"),
+                   path.lstrip("/")
+               ]
+           )
+       
+    1: def strip_relative_path(requests_pathname, path):
+           if path is None:
+               return None
+           elif ((requests_pathname != '/' and
+                   not path.startswith(requests_pathname.rstrip('/')))
+                   or (requests_pathname == '/' and not path.startswith('/'))):
+               raise exceptions.UnsupportedRelativePath(
+                   "Paths that aren't prefixed with a leading " +
+                   "requests_pathname_prefix are not supported.\n" +
+                   "You supplied: {} and requests_pathname_prefix was {}".format(
+                       path,
+                       requests_pathname
+                   )
+               )
+           if (requests_pathname != '/' and
+                   path.startswith(requests_pathname.rstrip('/'))):
+               path = path.replace(
+                   # handle the case where the path might be `/my-dash-app`
+                   # but the requests_pathname_prefix is `/my-dash-app/`
+                   requests_pathname.rstrip('/'),
+                   '',
+                   1
+               )
+           return path.strip('/')
+       
+       
+       # pylint: disable=no-member
+    1: def patch_collections_abc(member):
+    8:     return getattr(collections if utils.PY2 else collections.abc, member)
+       
+       
+    2: class AttributeDict(dict):
+           """Dictionary subclass enabling attribute lookup/assignment of keys/values.
+       
+           For example::
+               >>> m = AttributeDict({'foo': 'bar'})
+               >>> m.foo
+               'bar'
+               >>> m.foo = 'not bar'
+               >>> m['foo']
+               'not bar'
+           ``AttributeDict`` objects also provide ``.first()`` which acts like
+           ``.get()`` but accepts multiple keys as arguments, and returns the value of
+           the first hit, e.g.::
+               >>> m = AttributeDict({'foo': 'bar', 'biz': 'baz'})
+               >>> m.first('wrong', 'incorrect', 'foo', 'biz')
+               'bar'
+    1:     """
+       
+    1:     def __setattr__(self, key, value):
+    3:         self[key] = value
+       
+    1:     def __getattr__(self, key):
+   46:         try:
+   46:             return self[key]
+               except KeyError:
+                   pass
+               # to conform with __getattr__ spec
+               # but get out of the except block so it doesn't look like a nested err
+               raise AttributeError(key)
+       
+    1:     def set_read_only(self, names, msg="Attribute is read-only"):
+    1:         object.__setattr__(self, "_read_only", names)
+    1:         object.__setattr__(self, "_read_only_msg", msg)
+       
+    1:     def finalize(self, msg="Object is final: No new keys may be added."):
+               """Prevent any new keys being set."""
+    1:         object.__setattr__(self, "_final", msg)
+       
+    1:     def __setitem__(self, key, val):
+   21:         if key in self.__dict__.get("_read_only", []):
+                   raise AttributeError(self._read_only_msg, key)
+       
+   21:         final_msg = self.__dict__.get("_final")
+   21:         if final_msg and key not in self:
+                   raise AttributeError(final_msg, key)
+       
+   21:         return super(AttributeDict, self).__setitem__(key, val)
+       
+           # pylint: disable=inconsistent-return-statements
+    1:     def first(self, *names):
+               for name in names:
+                   value = self.get(name)
+                   if value:
+                       return value
+       
+       
+    1: def create_callback_id(output):
+   12:     if isinstance(output, (list, tuple)):
+    2:         return "..{}..".format(
+    2:             "...".join(
+    8:                 "{}.{}".format(x.component_id, x.component_property)
+    6:                 for x in output
+                   )
+               )
+       
+   10:     return "{}.{}".format(output.component_id, output.component_property)
+       
+       
+    1: def run_command_with_process(cmd):
+           is_win = sys.platform == "win32"
+           proc = subprocess.Popen(shlex.split(cmd, posix=is_win), shell=is_win)
+           proc.wait()
+           if proc.poll() is None:
+               logger.warning("🚨 trying to terminate subprocess in safe way")
+               try:
+                   proc.communicate()
+               except Exception:  # pylint: disable=broad-except
+                   logger.exception("🚨 first try communicate failed")
+                   proc.kill()
+                   proc.communicate()
+       
+       
+    1: def compute_md5(path):
+           with open(path, encoding="utf-8") as fp:
+               return hashlib.md5(fp.read().encode("utf-8")).hexdigest()
+       
+       
+    1: def job(msg=""):
+           def wrapper(func):
+               @wraps(func)
+               def _wrapper(*args, **kwargs):
+                   logger.info("🏗️  [%s] 🏗️️  - %s", func.__name__, msg)
+                   res = func(*args, **kwargs)
+                   logger.info("::: 🍻🍻🍻 [%s] job done 🍻🍻🍻 :::", func.__name__)
+                   return res
+       
+               return _wrapper
+       
+           return wrapper

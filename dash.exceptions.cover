@@ -1,0 +1,104 @@
+    2: class DashException(Exception):
+    1:     pass
+       
+       
+    2: class ObsoleteKwargException(DashException):
+    1:     pass
+       
+       
+    2: class NoLayoutException(DashException):
+    1:     pass
+       
+       
+    2: class CallbackException(DashException):
+    1:     pass
+       
+       
+    2: class NonExistentIdException(CallbackException):
+    1:     pass
+       
+       
+    2: class NonExistentPropException(CallbackException):
+    1:     pass
+       
+       
+    2: class NonExistentEventException(CallbackException):
+    1:     pass
+       
+       
+    2: class UndefinedLayoutException(CallbackException):
+    1:     pass
+       
+       
+    2: class IncorrectTypeException(CallbackException):
+    1:     pass
+       
+       
+    2: class MissingInputsException(CallbackException):
+    1:     pass
+       
+       
+    2: class LayoutIsNotDefined(CallbackException):
+    1:     pass
+       
+       
+    2: class IDsCantContainPeriods(CallbackException):
+    1:     pass
+       
+       
+       # Better error name now that more than periods are not permitted.
+    2: class InvalidComponentIdError(IDsCantContainPeriods):
+    1:     pass
+       
+       
+    2: class CantHaveMultipleOutputs(CallbackException):
+    1:     pass
+       
+       
+       # Renamed for less confusion with multi output.
+    2: class DuplicateCallbackOutput(CantHaveMultipleOutputs):
+    1:     pass
+       
+       
+    2: class PreventUpdate(CallbackException):
+    1:     pass
+       
+       
+    2: class DuplicateIdError(DashException):
+    1:     pass
+       
+       
+    2: class InvalidCallbackReturnValue(CallbackException):
+    1:     pass
+       
+       
+    2: class InvalidConfig(DashException):
+    1:     pass
+       
+       
+    2: class InvalidResourceError(DashException):
+    1:     pass
+       
+       
+    2: class InvalidIndexException(DashException):
+    1:     pass
+       
+       
+    2: class DependencyException(DashException):
+    1:     pass
+       
+       
+    2: class ResourceException(DashException):
+    1:     pass
+       
+       
+    2: class SameInputOutputException(CallbackException):
+    1:     pass
+       
+       
+    2: class MissingCallbackContextException(CallbackException):
+    1:     pass
+       
+       
+    2: class UnsupportedRelativePath(CallbackException):
+    1:     pass

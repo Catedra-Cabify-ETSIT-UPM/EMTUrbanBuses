@@ -1,0 +1,4 @@
+    1: """Run a subprocess in a pseudo terminal"""
+    1: from .ptyprocess import PtyProcess, PtyProcessUnicode, PtyProcessError
+       
+    1: __version__ = '0.6.0'

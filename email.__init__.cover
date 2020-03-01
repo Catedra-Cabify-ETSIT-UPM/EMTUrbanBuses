@@ -1,0 +1,62 @@
+       # Copyright (C) 2001-2007 Python Software Foundation
+       # Author: Barry Warsaw
+       # Contact: email-sig@python.org
+       
+    1: """A package for parsing, handling, and generating email messages."""
+       
+       __all__ = [
+    1:     'base64mime',
+    1:     'charset',
+    1:     'encoders',
+    1:     'errors',
+    1:     'feedparser',
+    1:     'generator',
+    1:     'header',
+    1:     'iterators',
+    1:     'message',
+    1:     'message_from_file',
+    1:     'message_from_binary_file',
+    1:     'message_from_string',
+    1:     'message_from_bytes',
+    1:     'mime',
+    1:     'parser',
+    1:     'quoprimime',
+    1:     'utils',
+           ]
+       
+       
+       
+       # Some convenience routines.  Don't import Parser and Message as side-effects
+       # of importing email since those cascadingly import most of the rest of the
+       # email package.
+    1: def message_from_string(s, *args, **kws):
+           """Parse a string into a Message object model.
+       
+           Optional _class and strict are passed to the Parser constructor.
+           """
+           from email.parser import Parser
+           return Parser(*args, **kws).parsestr(s)
+       
+    1: def message_from_bytes(s, *args, **kws):
+           """Parse a bytes string into a Message object model.
+       
+           Optional _class and strict are passed to the Parser constructor.
+           """
+           from email.parser import BytesParser
+           return BytesParser(*args, **kws).parsebytes(s)
+       
+    1: def message_from_file(fp, *args, **kws):
+           """Read a file and parse its contents into a Message object model.
+       
+           Optional _class and strict are passed to the Parser constructor.
+           """
+           from email.parser import Parser
+           return Parser(*args, **kws).parse(fp)
+       
+    1: def message_from_binary_file(fp, *args, **kws):
+           """Read a binary file and parse its contents into a Message object model.
+       
+           Optional _class and strict are passed to the Parser constructor.
+           """
+           from email.parser import BytesParser
+           return BytesParser(*args, **kws).parse(fp)

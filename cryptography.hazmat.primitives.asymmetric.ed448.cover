@@ -1,0 +1,79 @@
+       # This file is dual licensed under the terms of the Apache License, Version
+       # 2.0, and the BSD License. See the LICENSE file in the root of this repository
+       # for complete details.
+       
+    1: from __future__ import absolute_import, division, print_function
+       
+    1: import abc
+       
+    1: import six
+       
+    1: from cryptography.exceptions import UnsupportedAlgorithm, _Reasons
+       
+       
+    2: @six.add_metaclass(abc.ABCMeta)
+    1: class Ed448PublicKey(object):
+    1:     @classmethod
+           def from_public_bytes(cls, data):
+               from cryptography.hazmat.backends.openssl.backend import backend
+               if not backend.ed448_supported():
+                   raise UnsupportedAlgorithm(
+                       "ed448 is not supported by this version of OpenSSL.",
+                       _Reasons.UNSUPPORTED_PUBLIC_KEY_ALGORITHM
+                   )
+       
+               return backend.ed448_load_public_bytes(data)
+       
+    1:     @abc.abstractmethod
+           def public_bytes(self, encoding, format):
+               """
+               The serialized bytes of the public key.
+               """
+       
+    1:     @abc.abstractmethod
+           def verify(self, signature, data):
+               """
+               Verify the signature.
+               """
+       
+       
+    2: @six.add_metaclass(abc.ABCMeta)
+    1: class Ed448PrivateKey(object):
+    1:     @classmethod
+           def generate(cls):
+               from cryptography.hazmat.backends.openssl.backend import backend
+               if not backend.ed448_supported():
+                   raise UnsupportedAlgorithm(
+                       "ed448 is not supported by this version of OpenSSL.",
+                       _Reasons.UNSUPPORTED_PUBLIC_KEY_ALGORITHM
+                   )
+               return backend.ed448_generate_key()
+       
+    1:     @classmethod
+           def from_private_bytes(cls, data):
+               from cryptography.hazmat.backends.openssl.backend import backend
+               if not backend.ed448_supported():
+                   raise UnsupportedAlgorithm(
+                       "ed448 is not supported by this version of OpenSSL.",
+                       _Reasons.UNSUPPORTED_PUBLIC_KEY_ALGORITHM
+                   )
+       
+               return backend.ed448_load_private_bytes(data)
+       
+    1:     @abc.abstractmethod
+           def public_key(self):
+               """
+               The Ed448PublicKey derived from the private key.
+               """
+       
+    1:     @abc.abstractmethod
+           def sign(self, data):
+               """
+               Signs the data.
+               """
+       
+    1:     @abc.abstractmethod
+           def private_bytes(self, encoding, format, encryption_algorithm):
+               """
+               The serialized bytes of the private key.
+               """

@@ -1,0 +1,286 @@
+    1: from jinja2.visitor import NodeVisitor
+    1: from jinja2._compat import iteritems
+       
+       
+    1: VAR_LOAD_PARAMETER = 'param'
+    1: VAR_LOAD_RESOLVE = 'resolve'
+    1: VAR_LOAD_ALIAS = 'alias'
+    1: VAR_LOAD_UNDEFINED = 'undefined'
+       
+       
+    1: def find_symbols(nodes, parent_symbols=None):
+           sym = Symbols(parent=parent_symbols)
+           visitor = FrameSymbolVisitor(sym)
+           for node in nodes:
+               visitor.visit(node)
+           return sym
+       
+       
+    1: def symbols_for_node(node, parent_symbols=None):
+           sym = Symbols(parent=parent_symbols)
+           sym.analyze_node(node)
+           return sym
+       
+       
+    2: class Symbols(object):
+       
+    1:     def __init__(self, parent=None, level=None):
+   14:         if level is None:
+   14:             if parent is None:
+    8:                 level = 0
+                   else:
+    6:                 level = parent.level + 1
+   14:         self.level = level
+   14:         self.parent = parent
+   14:         self.refs = {}
+   14:         self.loads = {}
+   14:         self.stores = set()
+       
+    1:     def analyze_node(self, node, **kwargs):
+   15:         visitor = RootVisitor(self)
+   15:         visitor.visit(node, **kwargs)
+       
+    1:     def _define_ref(self, name, load=None):
+   28:         ident = 'l_%d_%s' % (self.level, name)
+   28:         self.refs[name] = ident
+   28:         if load is not None:
+   28:             self.loads[ident] = load
+   28:         return ident
+       
+    1:     def find_load(self, target):
+   73:         if target in self.loads:
+   73:             return self.loads[target]
+               if self.parent is not None:
+                   return self.parent.find_load(target)
+       
+    1:     def find_ref(self, name):
+  215:         if name in self.refs:
+  203:             return self.refs[name]
+   12:         if self.parent is not None:
+    1:             return self.parent.find_ref(name)
+       
+    1:     def ref(self, name):
+   93:         rv = self.find_ref(name)
+   93:         if rv is None:
+                   raise AssertionError('Tried to resolve a name to a reference that '
+                                        'was unknown to the frame (%r)' % name)
+   93:         return rv
+       
+    1:     def copy(self):
+   23:         rv = object.__new__(self.__class__)
+   23:         rv.__dict__.update(self.__dict__)
+   23:         rv.refs = self.refs.copy()
+   23:         rv.loads = self.loads.copy()
+   23:         rv.stores = self.stores.copy()
+   23:         return rv
+       
+    1:     def store(self, name):
+    3:         self.stores.add(name)
+       
+               # If we have not see the name referenced yet, we need to figure
+               # out what to set it to.
+    3:         if name not in self.refs:
+                   # If there is a parent scope we check if the name has a
+                   # reference there.  If it does it means we might have to alias
+                   # to a variable there.
+    3:             if self.parent is not None:
+                       outer_ref = self.parent.find_ref(name)
+                       if outer_ref is not None:
+                           self._define_ref(name, load=(VAR_LOAD_ALIAS, outer_ref))
+                           return
+       
+                   # Otherwise we can just set it to undefined.
+    3:             self._define_ref(name, load=(VAR_LOAD_UNDEFINED, None))
+       
+    1:     def declare_parameter(self, name):
+   14:         self.stores.add(name)
+   14:         return self._define_ref(name, load=(VAR_LOAD_PARAMETER, None))
+       
+    1:     def load(self, name):
+  121:         target = self.find_ref(name)
+  121:         if target is None:
+   11:             self._define_ref(name, load=(VAR_LOAD_RESOLVE, name))
+       
+    1:     def branch_update(self, branch_symbols):
+    6:         stores = {}
+   24:         for branch in branch_symbols:
+   30:             for target in branch.stores:
+   12:                 if target in self.stores:
+   12:                     continue
+                       stores[target] = stores.get(target, 0) + 1
+       
+   24:         for sym in branch_symbols:
+   18:             self.refs.update(sym.refs)
+   18:             self.loads.update(sym.loads)
+   18:             self.stores.update(sym.stores)
+       
+    6:         for name, branch_count in iteritems(stores):
+                   if branch_count == len(branch_symbols):
+                       continue
+                   target = self.find_ref(name)
+                   assert target is not None, 'should not happen'
+       
+                   if self.parent is not None:
+                       outer_target = self.parent.find_ref(name)
+                       if outer_target is not None:
+                           self.loads[target] = (VAR_LOAD_ALIAS, outer_target)
+                           continue
+                   self.loads[target] = (VAR_LOAD_RESOLVE, name)
+       
+    1:     def dump_stores(self):
+               rv = {}
+               node = self
+               while node is not None:
+                   for name in node.stores:
+                       if name not in rv:
+                           rv[name] = self.find_ref(name)
+                   node = node.parent
+               return rv
+       
+    1:     def dump_param_targets(self):
+    3:         rv = set()
+    3:         node = self
+    9:         while node is not None:
+   18:             for target, (instr, _) in iteritems(self.loads):
+   12:                 if instr == VAR_LOAD_PARAMETER:
+   12:                     rv.add(target)
+    6:             node = node.parent
+    3:         return rv
+       
+       
+    2: class RootVisitor(NodeVisitor):
+       
+    1:     def __init__(self, symbols):
+   15:         self.sym_visitor = FrameSymbolVisitor(symbols)
+       
+    1:     def _simple_visit(self, node, **kwargs):
+   48:         for child in node.iter_child_nodes():
+   34:             self.sym_visitor.visit(child)
+       
+           visit_Template = visit_Block = visit_Macro = visit_FilterBlock = \
+               visit_Scope = visit_If = visit_ScopedEvalContextModifier = \
+    1:         _simple_visit
+       
+    1:     def visit_AssignBlock(self, node, **kwargs):
+               for child in node.body:
+                   self.sym_visitor.visit(child)
+       
+    1:     def visit_CallBlock(self, node, **kwargs):
+               for child in node.iter_child_nodes(exclude=('call',)):
+                   self.sym_visitor.visit(child)
+       
+    1:     def visit_OverlayScope(self, node, **kwargs):
+               for child in node.body:
+                   self.sym_visitor.visit(child)
+       
+    1:     def visit_For(self, node, for_branch='body', **kwargs):
+    1:         if for_branch == 'body':
+    1:             self.sym_visitor.visit(node.target, store_as_param=True)
+    1:             branch = node.body
+               elif for_branch == 'else':
+                   branch = node.else_
+               elif for_branch == 'test':
+                   self.sym_visitor.visit(node.target, store_as_param=True)
+                   if node.test is not None:
+                       self.sym_visitor.visit(node.test)
+                   return
+               else:
+                   raise RuntimeError('Unknown for branch')
+    2:         for item in branch or ():
+    1:             self.sym_visitor.visit(item)
+       
+    1:     def visit_With(self, node, **kwargs):
+               for target in node.targets:
+                   self.sym_visitor.visit(target)
+               for child in node.body:
+                   self.sym_visitor.visit(child)
+       
+    1:     def generic_visit(self, node, *args, **kwargs):
+               raise NotImplementedError('Cannot find symbols for %r' %
+                                         node.__class__.__name__)
+       
+       
+    2: class FrameSymbolVisitor(NodeVisitor):
+    1:     """A visitor for `Frame.inspect`."""
+       
+    1:     def __init__(self, symbols):
+   15:         self.symbols = symbols
+       
+    1:     def visit_Name(self, node, store_as_param=False, **kwargs):
+               """All assignments to names go through this function."""
+  135:         if store_as_param or node.ctx == 'param':
+   14:             self.symbols.declare_parameter(node.name)
+  121:         elif node.ctx == 'store':
+                   self.symbols.store(node.name)
+  121:         elif node.ctx == 'load':
+  121:             self.symbols.load(node.name)
+       
+    1:     def visit_NSRef(self, node, **kwargs):
+               self.symbols.load(node.name)
+       
+    1:     def visit_If(self, node, **kwargs):
+    6:         self.visit(node.test, **kwargs)
+       
+    6:         original_symbols = self.symbols
+       
+    6:         def inner_visit(nodes):
+   18:             self.symbols = rv = original_symbols.copy()
+   29:             for subnode in nodes:
+   11:                 self.visit(subnode, **kwargs)
+   18:             self.symbols = original_symbols
+   18:             return rv
+       
+    6:         body_symbols = inner_visit(node.body)
+    6:         elif_symbols = inner_visit(node.elif_)
+    6:         else_symbols = inner_visit(node.else_ or ())
+       
+    6:         self.symbols.branch_update([body_symbols, elif_symbols, else_symbols])
+       
+    1:     def visit_Macro(self, node, **kwargs):
+    3:         self.symbols.store(node.name)
+       
+    1:     def visit_Import(self, node, **kwargs):
+               self.generic_visit(node, **kwargs)
+               self.symbols.store(node.target)
+       
+    1:     def visit_FromImport(self, node, **kwargs):
+               self.generic_visit(node, **kwargs)
+               for name in node.names:
+                   if isinstance(name, tuple):
+                       self.symbols.store(name[1])
+                   else:
+                       self.symbols.store(name)
+       
+    1:     def visit_Assign(self, node, **kwargs):
+               """Visit assignments in the correct order."""
+               self.visit(node.node, **kwargs)
+               self.visit(node.target, **kwargs)
+       
+    1:     def visit_For(self, node, **kwargs):
+               """Visiting stops at for blocks.  However the block sequence
+               is visited as part of the outer scope.
+               """
+    1:         self.visit(node.iter, **kwargs)
+       
+    1:     def visit_CallBlock(self, node, **kwargs):
+               self.visit(node.call, **kwargs)
+       
+    1:     def visit_FilterBlock(self, node, **kwargs):
+               self.visit(node.filter, **kwargs)
+       
+    1:     def visit_With(self, node, **kwargs):
+               for target in node.values:
+                   self.visit(target)
+       
+    1:     def visit_AssignBlock(self, node, **kwargs):
+               """Stop visiting at block assigns."""
+               self.visit(node.target, **kwargs)
+       
+    1:     def visit_Scope(self, node, **kwargs):
+               """Stop visiting at scopes."""
+       
+    1:     def visit_Block(self, node, **kwargs):
+               """Stop visiting at blocks."""
+       
+    1:     def visit_OverlayScope(self, node, **kwargs):
+               """Do not visit into overlay scopes."""

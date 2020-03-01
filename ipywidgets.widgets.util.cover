@@ -1,0 +1,15 @@
+       # Copyright (c) Jupyter Development Team.
+       # Distributed under the terms of the Modified BSD License.
+       
+       # six is not a direct dependency of this module
+       # This replicates six.text_type
+    1: try:
+    1:     text_type = unicode
+    1: except NameError:
+    1:     text_type = str
+       
+       
+    1: try:
+    1:     string_types = basestring
+    1: except NameError:
+    1:     string_types = str

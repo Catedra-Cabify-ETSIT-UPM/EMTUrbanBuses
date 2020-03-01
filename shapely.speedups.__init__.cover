@@ -1,0 +1,99 @@
+    1: import warnings
+    1: from functools import wraps
+       
+    1: from shapely.geometry import linestring, polygon
+    1: from shapely import coords
+    1: import shapely.affinity
+       
+       
+    1: try:
+    1:     from shapely.speedups import _speedups
+    1:     available = True
+    1:     import_error_msg = None
+       except ImportError:
+           import sys
+           available = False
+           # TODO: This does not appear to do anything useful
+           import_error_msg = sys.exc_info()[1]
+       
+       
+    1: def method_wrapper(f):
+    1:     def wrapper(*args, **kwargs):
+               return f(*args, **kwargs)
+    1:     return wraps(f)(wrapper)
+       
+    1: __all__ = ['available', 'enable', 'disable', 'enabled']
+    1: _orig = {}
+       
+       # keep track of whether speedups are enabled
+    1: enabled = False
+       
+       
+    1: def enable():
+           """Enable Cython speedups
+       
+           The shapely.speedups module contains performance enhancements written in C.
+           They are automaticaly installed when Python has access to a compiler and
+           GEOS development headers during installation, and are enabled by default.
+       
+           You can check if speedups are installed with the `available` attribute, and
+           check if they have been enabled with the `enabled` attribute.
+       
+           >>> from shapely import speedups
+           >>> speedups.available
+           True
+           >>> speedups.enable()
+           >>> speedups.enabled
+           True
+           """
+    1:     if not available:
+               warnings.warn("shapely.speedups not available", RuntimeWarning)
+               return
+       
+    1:     if _orig:
+               return
+       
+    1:     _orig['CoordinateSequence.ctypes'] = coords.CoordinateSequence.ctypes
+    1:     coords.CoordinateSequence.ctypes = property(_speedups.coordseq_ctypes)
+       
+    1:     _orig['CoordinateSequence.__iter__'] = coords.CoordinateSequence.__iter__
+    1:     coords.CoordinateSequence.__iter__ = method_wrapper(
+    1:         _speedups.coordseq_iter)
+       
+    1:     _orig['geos_linestring_from_py'] = linestring.geos_linestring_from_py
+    1:     linestring.geos_linestring_from_py = _speedups.geos_linestring_from_py
+       
+    1:     _orig['geos_linearring_from_py'] = polygon.geos_linearring_from_py
+    1:     polygon.geos_linearring_from_py = _speedups.geos_linearring_from_py
+       
+    1:     _orig['affine_transform'] = shapely.affinity.affine_transform
+       
+           # copy docstring from original function
+    1:     def affine_transform(geom, matrix):
+               return _speedups.affine_transform(geom, matrix)
+    1:     affine_transform.__doc__ = shapely.affinity.affine_transform.__doc__
+    1:     shapely.affinity.affine_transform = affine_transform
+       
+           global enabled
+    1:     enabled = True
+       
+       
+    1: def disable():
+           """Disable Cython speedups
+           """
+           if not _orig:
+               return
+       
+           coords.CoordinateSequence.ctypes = _orig['CoordinateSequence.ctypes']
+           coords.CoordinateSequence.__iter__ = _orig['CoordinateSequence.__iter__']
+           linestring.geos_linestring_from_py = _orig['geos_linestring_from_py']
+           polygon.geos_linearring_from_py = _orig['geos_linearring_from_py']
+           shapely.affinity.affine_transform = _orig['affine_transform']
+           _orig.clear()
+       
+           global enabled
+           enabled = False
+       
+       # if cython speedups are available, use them by default
+    1: if available:
+    1:     enable()

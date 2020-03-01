@@ -1,0 +1,6 @@
+    1: import dash
+       
+       #We setup the app
+    1: app = dash.Dash(__name__)
+    1: server = app.server
+    1: app.config.suppress_callback_exceptions = True

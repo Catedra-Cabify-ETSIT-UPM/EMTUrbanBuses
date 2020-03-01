@@ -1,0 +1,47 @@
+    1: from functools import wraps
+       
+       
+    2: class _PluginManager(object):
+    1:     def __init__(self):
+    1:         self._registered_plugins = []
+    1:         self._cached_base_callbacks = {}
+    1:         self._built_functions = {}
+       
+    1:     def register(self, *plugins):
+               """
+               Makes it possible to register your plugin.
+               """
+    1:         self._registered_plugins.extend(plugins)
+    1:         self._build_functions()
+       
+    1:     def decorate(self):
+    4:         def decorator(callback):
+    4:             @wraps(callback)
+                   def wrapper(*args, **kwargs):
+                       return built_functions[name](*args, **kwargs)
+       
+    4:             name = callback.__name__
+       
+    4:             assert name not in self._built_functions
+    4:             built_functions = self._built_functions
+    4:             built_functions[name] = callback
+    4:             self._cached_base_callbacks[name] = callback
+       
+    4:             return wrapper
+       
+    4:         return decorator
+       
+    1:     def _build_functions(self):
+    5:         for name, callback in self._cached_base_callbacks.items():
+   12:             for plugin in reversed(self._registered_plugins):
+                       # Need to reverse so the first plugin is run first.
+    8:                 try:
+    8:                     func = getattr(plugin, name)
+    4:                 except AttributeError:
+    4:                     pass
+                       else:
+    4:                     callback = func(callback)
+    4:             self._built_functions[name] = callback
+       
+       
+    1: plugin_manager = _PluginManager()

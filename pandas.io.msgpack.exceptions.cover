@@ -1,0 +1,31 @@
+    2: class UnpackException(Exception):
+    1:     pass
+       
+       
+    2: class BufferFull(UnpackException):
+    1:     pass
+       
+       
+    2: class OutOfData(UnpackException):
+    1:     pass
+       
+       
+    2: class UnpackValueError(UnpackException, ValueError):
+    1:     pass
+       
+       
+    2: class ExtraData(ValueError):
+    1:     def __init__(self, unpacked, extra):
+               self.unpacked = unpacked
+               self.extra = extra
+       
+    1:     def __str__(self):
+               return "unpack(b) received extra data."
+       
+       
+    2: class PackException(Exception):
+    1:     pass
+       
+       
+    2: class PackValueError(PackException, ValueError):
+    1:     pass

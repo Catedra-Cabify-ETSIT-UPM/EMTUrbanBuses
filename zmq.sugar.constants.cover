@@ -1,0 +1,108 @@
+    1: """0MQ Constants."""
+       
+       # Copyright (c) PyZMQ Developers.
+       # Distributed under the terms of the Modified BSD License.
+       
+    1: from zmq.backend import constants
+    1: from zmq.backend import has
+    1: from zmq.utils.constant_names import (
+           base_names,
+           switched_sockopt_names,
+           int_sockopt_names,
+           int64_sockopt_names,
+           bytes_sockopt_names,
+           fd_sockopt_names,
+           ctx_opt_names,
+           msg_opt_names,
+       )
+       
+       #-----------------------------------------------------------------------------
+       # Python module level constants
+       #-----------------------------------------------------------------------------
+       
+       
+       __all__ = [
+    1:     'int_sockopts',
+    1:     'int64_sockopts',
+    1:     'bytes_sockopts',
+    1:     'ctx_opts',
+    1:     'ctx_opt_names',
+    1:     'DRAFT_API',
+       ]
+       
+    1: if constants.VERSION < 40200:
+           DRAFT_API = False
+       else:
+    1:     DRAFT_API = bool(has('draft') and constants.DRAFT_API)
+       
+    1: int_sockopts    = set()
+    1: int64_sockopts  = set()
+    1: bytes_sockopts  = set()
+    1: fd_sockopts     = set()
+    1: ctx_opts        = set()
+    1: msg_opts        = set()
+       
+       
+    1: if constants.VERSION < 30000:
+           int64_sockopt_names.extend(switched_sockopt_names)
+       else:
+    1:     int_sockopt_names.extend(switched_sockopt_names)
+       
+    1: _UNDEFINED = -9999
+       
+       
+    1: def _add_constant(name, container=None):
+           """add a constant to be defined
+       
+           optionally add it to one of the sets for use in get/setopt checkers
+           """
+  220:     c = getattr(constants, name, _UNDEFINED)
+  220:     if c == _UNDEFINED:
+   18:         return
+  202:     globals()[name] = c
+  202:     __all__.append(name)
+  202:     if container is not None:
+   98:         container.add(c)
+  202:     return c
+       
+  116: for name in base_names:
+  115:     _add_constant(name)
+       
+   64: for name in int_sockopt_names:
+   63:     _add_constant(name, int_sockopts)
+       
+   10: for name in int64_sockopt_names:
+    9:     _add_constant(name, int64_sockopts)
+       
+   20: for name in bytes_sockopt_names:
+   19:     _add_constant(name, bytes_sockopts)
+       
+    2: for name in fd_sockopt_names:
+    1:     _add_constant(name, fd_sockopts)
+       
+   11: for name in ctx_opt_names:
+   10:     _add_constant(name, ctx_opts)
+       
+    4: for name in msg_opt_names:
+    3:     _add_constant(name, msg_opts)
+       
+       
+       # ensure some aliases are always defined
+       aliases = [
+    1:     ('DONTWAIT', 'NOBLOCK'),
+    1:     ('XREQ', 'DEALER'),
+    1:     ('XREP', 'ROUTER'),
+       ]
+    4: for group in aliases:
+    3:     undefined = set()
+    3:     found = None
+    9:     for name in group:
+    6:         value = getattr(constants, name, -1)
+    6:         if value != -1:
+    6:             found = value
+               else:
+                   undefined.add(name)
+    3:     if found is not None:
+    3:         for name in undefined:
+                   globals()[name] = found
+                   __all__.append(name)

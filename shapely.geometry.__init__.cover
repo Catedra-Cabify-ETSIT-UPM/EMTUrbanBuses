@@ -1,0 +1,23 @@
+       """Geometry classes and factories
+    1: """
+       
+    1: from .base import CAP_STYLE, JOIN_STYLE
+    1: from .geo import box, shape, asShape, mapping
+    1: from .point import Point, asPoint
+    1: from .linestring import LineString, asLineString
+    1: from .polygon import Polygon, asPolygon, LinearRing, asLinearRing
+    1: from .multipoint import MultiPoint, asMultiPoint
+    1: from .multilinestring import MultiLineString, asMultiLineString
+    1: from .multipolygon import MultiPolygon, asMultiPolygon
+    1: from .collection import GeometryCollection
+       
+       __all__ = [
+    1:     'box', 'shape', 'asShape', 'Point', 'asPoint', 'LineString',
+    1:     'asLineString', 'Polygon', 'asPolygon', 'MultiPoint', 'asMultiPoint',
+    1:     'MultiLineString', 'asMultiLineString', 'MultiPolygon', 'asMultiPolygon',
+    1:     'GeometryCollection', 'mapping', 'LinearRing', 'asLinearRing',
+    1:     'CAP_STYLE', 'JOIN_STYLE',
+       ]
+       
+       # This needs to be called here to avoid circular references
+    1: import shapely.speedups

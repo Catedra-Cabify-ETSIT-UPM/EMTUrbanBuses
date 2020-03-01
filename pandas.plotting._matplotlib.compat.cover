@@ -1,0 +1,22 @@
+       # being a bit too dynamic
+    1: from distutils.version import LooseVersion
+    1: import operator
+       
+       
+    1: def _mpl_version(version, op):
+    3:     def inner():
+               try:
+                   import matplotlib as mpl
+               except ImportError:
+                   return False
+               return (
+                   op(LooseVersion(mpl.__version__), LooseVersion(version))
+                   and str(mpl.__version__)[0] != "0"
+               )
+       
+    3:     return inner
+       
+       
+    1: _mpl_ge_2_2_3 = _mpl_version("2.2.3", operator.ge)
+    1: _mpl_ge_3_0_0 = _mpl_version("3.0.0", operator.ge)
+    1: _mpl_ge_3_1_0 = _mpl_version("3.1.0", operator.ge)

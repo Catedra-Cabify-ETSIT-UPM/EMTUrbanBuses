@@ -1,0 +1,22 @@
+    1: from blinker.base import (
+           ANY,
+           NamedSignal,
+           Namespace,
+           Signal,
+           WeakNamespace,
+           receiver_connected,
+           signal,
+       )
+       
+       __all__ = [
+    1:     'ANY',
+    1:     'NamedSignal',
+    1:     'Namespace',
+    1:     'Signal',
+    1:     'WeakNamespace',
+    1:     'receiver_connected',
+    1:     'signal',
+           ]
+       
+       
+    1: __version__ = '1.4'

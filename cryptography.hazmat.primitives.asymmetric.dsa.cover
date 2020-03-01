@@ -1,0 +1,254 @@
+       # This file is dual licensed under the terms of the Apache License, Version
+       # 2.0, and the BSD License. See the LICENSE file in the root of this repository
+       # for complete details.
+       
+    1: from __future__ import absolute_import, division, print_function
+       
+    1: import abc
+       
+    1: import six
+       
+    1: from cryptography import utils
+       
+       
+    2: @six.add_metaclass(abc.ABCMeta)
+    1: class DSAParameters(object):
+    1:     @abc.abstractmethod
+           def generate_private_key(self):
+               """
+               Generates and returns a DSAPrivateKey.
+               """
+       
+       
+    2: @six.add_metaclass(abc.ABCMeta)
+    1: class DSAParametersWithNumbers(DSAParameters):
+    1:     @abc.abstractmethod
+           def parameter_numbers(self):
+               """
+               Returns a DSAParameterNumbers.
+               """
+       
+       
+    2: @six.add_metaclass(abc.ABCMeta)
+    1: class DSAPrivateKey(object):
+    1:     @abc.abstractproperty
+           def key_size(self):
+               """
+               The bit length of the prime modulus.
+               """
+       
+    1:     @abc.abstractmethod
+           def public_key(self):
+               """
+               The DSAPublicKey associated with this private key.
+               """
+       
+    1:     @abc.abstractmethod
+           def parameters(self):
+               """
+               The DSAParameters object associated with this private key.
+               """
+       
+    1:     @abc.abstractmethod
+           def signer(self, signature_algorithm):
+               """
+               Returns an AsymmetricSignatureContext used for signing data.
+               """
+       
+    1:     @abc.abstractmethod
+           def sign(self, data, algorithm):
+               """
+               Signs the data
+               """
+       
+       
+    2: @six.add_metaclass(abc.ABCMeta)
+    1: class DSAPrivateKeyWithSerialization(DSAPrivateKey):
+    1:     @abc.abstractmethod
+           def private_numbers(self):
+               """
+               Returns a DSAPrivateNumbers.
+               """
+       
+    1:     @abc.abstractmethod
+           def private_bytes(self, encoding, format, encryption_algorithm):
+               """
+               Returns the key serialized as bytes.
+               """
+       
+       
+    2: @six.add_metaclass(abc.ABCMeta)
+    1: class DSAPublicKey(object):
+    1:     @abc.abstractproperty
+           def key_size(self):
+               """
+               The bit length of the prime modulus.
+               """
+       
+    1:     @abc.abstractmethod
+           def parameters(self):
+               """
+               The DSAParameters object associated with this public key.
+               """
+       
+    1:     @abc.abstractmethod
+           def verifier(self, signature, signature_algorithm):
+               """
+               Returns an AsymmetricVerificationContext used for signing data.
+               """
+       
+    1:     @abc.abstractmethod
+           def public_numbers(self):
+               """
+               Returns a DSAPublicNumbers.
+               """
+       
+    1:     @abc.abstractmethod
+           def public_bytes(self, encoding, format):
+               """
+               Returns the key serialized as bytes.
+               """
+       
+    1:     @abc.abstractmethod
+           def verify(self, signature, data, algorithm):
+               """
+               Verifies the signature of the data.
+               """
+       
+       
+    1: DSAPublicKeyWithSerialization = DSAPublicKey
+       
+       
+    1: def generate_parameters(key_size, backend):
+           return backend.generate_dsa_parameters(key_size)
+       
+       
+    1: def generate_private_key(key_size, backend):
+           return backend.generate_dsa_private_key_and_parameters(key_size)
+       
+       
+    1: def _check_dsa_parameters(parameters):
+           if parameters.p.bit_length() not in [1024, 2048, 3072]:
+               raise ValueError("p must be exactly 1024, 2048, or 3072 bits long")
+           if parameters.q.bit_length() not in [160, 224, 256]:
+               raise ValueError("q must be exactly 160, 224, or 256 bits long")
+       
+           if not (1 < parameters.g < parameters.p):
+               raise ValueError("g, p don't satisfy 1 < g < p.")
+       
+       
+    1: def _check_dsa_private_numbers(numbers):
+           parameters = numbers.public_numbers.parameter_numbers
+           _check_dsa_parameters(parameters)
+           if numbers.x <= 0 or numbers.x >= parameters.q:
+               raise ValueError("x must be > 0 and < q.")
+       
+           if numbers.public_numbers.y != pow(parameters.g, numbers.x, parameters.p):
+               raise ValueError("y must be equal to (g ** x % p).")
+       
+       
+    2: class DSAParameterNumbers(object):
+    1:     def __init__(self, p, q, g):
+               if (
+                   not isinstance(p, six.integer_types) or
+                   not isinstance(q, six.integer_types) or
+                   not isinstance(g, six.integer_types)
+               ):
+                   raise TypeError(
+                       "DSAParameterNumbers p, q, and g arguments must be integers."
+                   )
+       
+               self._p = p
+               self._q = q
+               self._g = g
+       
+    1:     p = utils.read_only_property("_p")
+    1:     q = utils.read_only_property("_q")
+    1:     g = utils.read_only_property("_g")
+       
+    1:     def parameters(self, backend):
+               return backend.load_dsa_parameter_numbers(self)
+       
+    1:     def __eq__(self, other):
+               if not isinstance(other, DSAParameterNumbers):
+                   return NotImplemented
+       
+               return self.p == other.p and self.q == other.q and self.g == other.g
+       
+    1:     def __ne__(self, other):
+               return not self == other
+       
+    1:     def __repr__(self):
+               return (
+                   "<DSAParameterNumbers(p={self.p}, q={self.q}, g={self.g})>".format(
+                       self=self
+                   )
+               )
+       
+       
+    2: class DSAPublicNumbers(object):
+    1:     def __init__(self, y, parameter_numbers):
+               if not isinstance(y, six.integer_types):
+                   raise TypeError("DSAPublicNumbers y argument must be an integer.")
+       
+               if not isinstance(parameter_numbers, DSAParameterNumbers):
+                   raise TypeError(
+                       "parameter_numbers must be a DSAParameterNumbers instance."
+                   )
+       
+               self._y = y
+               self._parameter_numbers = parameter_numbers
+       
+    1:     y = utils.read_only_property("_y")
+    1:     parameter_numbers = utils.read_only_property("_parameter_numbers")
+       
+    1:     def public_key(self, backend):
+               return backend.load_dsa_public_numbers(self)
+       
+    1:     def __eq__(self, other):
+               if not isinstance(other, DSAPublicNumbers):
+                   return NotImplemented
+       
+               return (
+                   self.y == other.y and
+                   self.parameter_numbers == other.parameter_numbers
+               )
+       
+    1:     def __ne__(self, other):
+               return not self == other
+       
+    1:     def __repr__(self):
+               return (
+                   "<DSAPublicNumbers(y={self.y}, "
+                   "parameter_numbers={self.parameter_numbers})>".format(self=self)
+               )
+       
+       
+    2: class DSAPrivateNumbers(object):
+    1:     def __init__(self, x, public_numbers):
+               if not isinstance(x, six.integer_types):
+                   raise TypeError("DSAPrivateNumbers x argument must be an integer.")
+       
+               if not isinstance(public_numbers, DSAPublicNumbers):
+                   raise TypeError(
+                       "public_numbers must be a DSAPublicNumbers instance."
+                   )
+               self._public_numbers = public_numbers
+               self._x = x
+       
+    1:     x = utils.read_only_property("_x")
+    1:     public_numbers = utils.read_only_property("_public_numbers")
+       
+    1:     def private_key(self, backend):
+               return backend.load_dsa_private_numbers(self)
+       
+    1:     def __eq__(self, other):
+               if not isinstance(other, DSAPrivateNumbers):
+                   return NotImplemented
+       
+               return (
+                   self.x == other.x and self.public_numbers == other.public_numbers
+               )
+       
+    1:     def __ne__(self, other):
+               return not self == other

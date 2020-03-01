@@ -1,0 +1,79 @@
+       # This file is dual licensed under the terms of the Apache License, Version
+       # 2.0, and the BSD License. See the LICENSE file in the root of this repository
+       # for complete details.
+       
+    1: from __future__ import absolute_import, division, print_function
+       
+    1: import abc
+    1: import math
+       
+    1: import six
+       
+    1: from cryptography import utils
+    1: from cryptography.hazmat.primitives import hashes
+    1: from cryptography.hazmat.primitives.asymmetric import rsa
+       
+       
+    2: @six.add_metaclass(abc.ABCMeta)
+    1: class AsymmetricPadding(object):
+    1:     @abc.abstractproperty
+           def name(self):
+               """
+               A string naming this padding (e.g. "PSS", "PKCS1").
+               """
+       
+       
+    2: @utils.register_interface(AsymmetricPadding)
+    1: class PKCS1v15(object):
+    1:     name = "EMSA-PKCS1-v1_5"
+       
+       
+    2: @utils.register_interface(AsymmetricPadding)
+    1: class PSS(object):
+    1:     MAX_LENGTH = object()
+    1:     name = "EMSA-PSS"
+       
+    1:     def __init__(self, mgf, salt_length):
+               self._mgf = mgf
+       
+               if (not isinstance(salt_length, six.integer_types) and
+                       salt_length is not self.MAX_LENGTH):
+                   raise TypeError("salt_length must be an integer.")
+       
+               if salt_length is not self.MAX_LENGTH and salt_length < 0:
+                   raise ValueError("salt_length must be zero or greater.")
+       
+               self._salt_length = salt_length
+       
+       
+    2: @utils.register_interface(AsymmetricPadding)
+    1: class OAEP(object):
+    1:     name = "EME-OAEP"
+       
+    1:     def __init__(self, mgf, algorithm, label):
+               if not isinstance(algorithm, hashes.HashAlgorithm):
+                   raise TypeError("Expected instance of hashes.HashAlgorithm.")
+       
+               self._mgf = mgf
+               self._algorithm = algorithm
+               self._label = label
+       
+       
+    2: class MGF1(object):
+    1:     MAX_LENGTH = object()
+       
+    1:     def __init__(self, algorithm):
+               if not isinstance(algorithm, hashes.HashAlgorithm):
+                   raise TypeError("Expected instance of hashes.HashAlgorithm.")
+       
+               self._algorithm = algorithm
+       
+       
+    1: def calculate_max_pss_salt_length(key, hash_algorithm):
+           if not isinstance(key, (rsa.RSAPrivateKey, rsa.RSAPublicKey)):
+               raise TypeError("key must be an RSA public or private key")
+           # bit length - 1 per RFC 3447
+           emlen = int(math.ceil((key.key_size - 1) / 8.0))
+           salt_length = emlen - hash_algorithm.digest_size - 2
+           assert salt_length >= 0
+           return salt_length

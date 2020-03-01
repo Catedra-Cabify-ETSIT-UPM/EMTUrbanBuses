@@ -1,0 +1,99 @@
+       # -*- coding: utf-8 -*-
+       """
+           jinja2._compat
+           ~~~~~~~~~~~~~~
+       
+           Some py2/py3 compatibility support based on a stripped down
+           version of six so we don't have to depend on a specific version
+           of it.
+       
+           :copyright: Copyright 2013 by the Jinja team, see AUTHORS.
+           :license: BSD, see LICENSE for details.
+    1: """
+    1: import sys
+       
+    1: PY2 = sys.version_info[0] == 2
+    1: PYPY = hasattr(sys, 'pypy_translation_info')
+   21: _identity = lambda x: x
+       
+       
+    1: if not PY2:
+    1:     unichr = chr
+    1:     range_type = range
+    1:     text_type = str
+    1:     string_types = (str,)
+    1:     integer_types = (int,)
+       
+    1:     iterkeys = lambda d: iter(d.keys())
+    1:     itervalues = lambda d: iter(d.values())
+  203:     iteritems = lambda d: iter(d.items())
+       
+    1:     import pickle
+    1:     from io import BytesIO, StringIO
+    1:     NativeStringIO = StringIO
+       
+    1:     def reraise(tp, value, tb=None):
+               if value.__traceback__ is not tb:
+                   raise value.with_traceback(tb)
+               raise value
+       
+    1:     ifilter = filter
+    1:     imap = map
+    1:     izip = zip
+    1:     intern = sys.intern
+       
+    1:     implements_iterator = _identity
+    1:     implements_to_string = _identity
+    1:     encode_filename = _identity
+       
+       else:
+           unichr = unichr
+           text_type = unicode
+           range_type = xrange
+           string_types = (str, unicode)
+           integer_types = (int, long)
+       
+           iterkeys = lambda d: d.iterkeys()
+           itervalues = lambda d: d.itervalues()
+           iteritems = lambda d: d.iteritems()
+       
+           import cPickle as pickle
+           from cStringIO import StringIO as BytesIO, StringIO
+           NativeStringIO = BytesIO
+       
+           exec('def reraise(tp, value, tb=None):\n raise tp, value, tb')
+       
+           from itertools import imap, izip, ifilter
+           intern = intern
+       
+           def implements_iterator(cls):
+               cls.next = cls.__next__
+               del cls.__next__
+               return cls
+       
+           def implements_to_string(cls):
+               cls.__unicode__ = cls.__str__
+               cls.__str__ = lambda x: x.__unicode__().encode('utf-8')
+               return cls
+       
+           def encode_filename(filename):
+               if isinstance(filename, unicode):
+                   return filename.encode('utf-8')
+               return filename
+       
+       
+    1: def with_metaclass(meta, *bases):
+           """Create a base class with a metaclass."""
+           # This requires a bit of explanation: the basic idea is to make a
+           # dummy metaclass for one level of class instantiation that replaces
+           # itself with the actual metaclass.
+    6:     class metaclass(type):
+    3:         def __new__(cls, name, this_bases, d):
+    3:             return meta(name, bases, d)
+    3:     return type.__new__(metaclass, 'temporary_class', (), {})
+       
+       
+    1: try:
+    1:     from urllib.parse import quote_from_bytes as url_quote
+       except ImportError:
+           from urllib import quote as url_quote

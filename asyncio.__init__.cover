@@ -1,0 +1,43 @@
+    1: """The asyncio package, tracking PEP 3156."""
+       
+       # flake8: noqa
+       
+    1: import sys
+       
+       # This relies on each of the submodules having an __all__ variable.
+    1: from .base_events import *
+    1: from .coroutines import *
+    1: from .events import *
+    1: from .futures import *
+    1: from .locks import *
+    1: from .protocols import *
+    1: from .runners import *
+    1: from .queues import *
+    1: from .streams import *
+    1: from .subprocess import *
+    1: from .tasks import *
+    1: from .transports import *
+       
+       # Exposed for _asynciomodule.c to implement now deprecated
+       # Task.all_tasks() method.  This function will be removed in 3.9.
+    1: from .tasks import _all_tasks_compat  # NoQA
+       
+       __all__ = (base_events.__all__ +
+                  coroutines.__all__ +
+                  events.__all__ +
+                  futures.__all__ +
+                  locks.__all__ +
+                  protocols.__all__ +
+                  runners.__all__ +
+                  queues.__all__ +
+                  streams.__all__ +
+                  subprocess.__all__ +
+    1:            tasks.__all__ +
+    1:            transports.__all__)
+       
+    1: if sys.platform == 'win32':  # pragma: no cover
+           from .windows_events import *
+           __all__ += windows_events.__all__
+       else:
+    1:     from .unix_events import *  # pragma: no cover
+    1:     __all__ += unix_events.__all__

@@ -1,0 +1,49 @@
+    1: """Abstract base classes for kernel client channels"""
+       
+       # Copyright (c) Jupyter Development Team.
+       # Distributed under the terms of the Modified BSD License.
+       
+    1: import abc
+       
+    1: from ipython_genutils.py3compat import with_metaclass
+       
+       
+    2: class ChannelABC(with_metaclass(abc.ABCMeta, object)):
+    1:     """A base class for all channel ABCs."""
+       
+    1:     @abc.abstractmethod
+           def start(self):
+               pass
+       
+    1:     @abc.abstractmethod
+           def stop(self):
+               pass
+       
+    1:     @abc.abstractmethod
+           def is_alive(self):
+               pass
+       
+       
+    2: class HBChannelABC(ChannelABC):
+           """HBChannel ABC.
+       
+           The docstrings for this class can be found in the base implementation:
+       
+           `jupyter_client.channels.HBChannel`
+    1:     """
+       
+    1:     @abc.abstractproperty
+           def time_to_dead(self):
+               pass
+       
+    1:     @abc.abstractmethod
+           def pause(self):
+               pass
+       
+    1:     @abc.abstractmethod
+           def unpause(self):
+               pass
+       
+    1:     @abc.abstractmethod
+           def is_beating(self):
+               pass

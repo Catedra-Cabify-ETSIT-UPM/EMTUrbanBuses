@@ -1,0 +1,85 @@
+       # Copyright (c) Jupyter Development Team.
+       # Distributed under the terms of the Modified BSD License.
+       
+       """Bool class.
+       
+       Represents a boolean using a widget.
+    1: """
+       
+    1: from .widget_description import DescriptionWidget
+    1: from .widget_core import CoreWidget
+    1: from .valuewidget import ValueWidget
+    1: from .widget import register
+    1: from traitlets import Unicode, Bool, CaselessStrEnum
+       
+       
+    2: class _Bool(DescriptionWidget, ValueWidget, CoreWidget):
+    1:     """A base class for creating widgets that represent booleans."""
+    1:     value = Bool(False, help="Bool value").tag(sync=True)
+    1:     disabled = Bool(False, help="Enable or disable user changes.").tag(sync=True)
+       
+    1:     def __init__(self, value=None, **kwargs):
+               if value is not None:
+                   kwargs['value'] = value
+               super(_Bool, self).__init__(**kwargs)
+       
+    1:     _model_name = Unicode('BoolModel').tag(sync=True)
+       
+       
+    2: @register
+    1: class Checkbox(_Bool):
+           """Displays a boolean `value` in the form of a checkbox.
+       
+           Parameters
+           ----------
+           value : {True,False}
+               value of the checkbox: True-checked, False-unchecked
+           description : str
+                   description displayed next to the checkbox
+           indent : {True,False}
+               indent the control to align with other controls with a description. The style.description_width attribute controls this width for consistence with other controls.
+    1:     """
+    1:     _view_name = Unicode('CheckboxView').tag(sync=True)
+    1:     _model_name = Unicode('CheckboxModel').tag(sync=True)
+    1:     indent = Bool(True, help="Indent the control to align with other controls with a description.").tag(sync=True)
+       
+       
+    2: @register
+    1: class ToggleButton(_Bool):
+           """Displays a boolean `value` in the form of a toggle button.
+       
+           Parameters
+           ----------
+           value : {True,False}
+               value of the toggle button: True-pressed, False-unpressed
+           description : str
+                     description displayed next to the button
+           tooltip: str
+               tooltip caption of the toggle button
+           icon: str
+               font-awesome icon name
+    1:     """
+    1:     _view_name = Unicode('ToggleButtonView').tag(sync=True)
+    1:     _model_name = Unicode('ToggleButtonModel').tag(sync=True)
+       
+    1:     tooltip = Unicode(help="Tooltip caption of the toggle button.").tag(sync=True)
+    1:     icon = Unicode('', help= "Font-awesome icon.").tag(sync=True)
+       
+    1:     button_style = CaselessStrEnum(
+    1:         values=['primary', 'success', 'info', 'warning', 'danger', ''], default_value='',
+    1:         help="""Use a predefined styling for the button.""").tag(sync=True)
+       
+       
+    2: @register
+    1: class Valid(_Bool):
+           """Displays a boolean `value` in the form of a green check (True / valid)
+           or a red cross (False / invalid).
+       
+           Parameters
+           ----------
+           value: {True,False}
+               value of the Valid widget
+    1:     """
+    1:     readout = Unicode('Invalid', help="Message displayed when the value is False").tag(sync=True)
+    1:     _view_name = Unicode('ValidView').tag(sync=True)
+    1:     _model_name = Unicode('ValidModel').tag(sync=True)

@@ -1,0 +1,76 @@
+       """
+       All of the Enums that are used throughout the chardet package.
+       
+       :author: Dan Blanchard (dan.blanchard@gmail.com)
+    1: """
+       
+       
+    2: class InputState(object):
+           """
+           This enum represents the different states a universal detector can be in.
+    1:     """
+    1:     PURE_ASCII = 0
+    1:     ESC_ASCII = 1
+    1:     HIGH_BYTE = 2
+       
+       
+    2: class LanguageFilter(object):
+           """
+           This enum represents the different language filters we can apply to a
+           ``UniversalDetector``.
+    1:     """
+    1:     CHINESE_SIMPLIFIED = 0x01
+    1:     CHINESE_TRADITIONAL = 0x02
+    1:     JAPANESE = 0x04
+    1:     KOREAN = 0x08
+    1:     NON_CJK = 0x10
+    1:     ALL = 0x1F
+    1:     CHINESE = CHINESE_SIMPLIFIED | CHINESE_TRADITIONAL
+    1:     CJK = CHINESE | JAPANESE | KOREAN
+       
+       
+    2: class ProbingState(object):
+           """
+           This enum represents the different states a prober can be in.
+    1:     """
+    1:     DETECTING = 0
+    1:     FOUND_IT = 1
+    1:     NOT_ME = 2
+       
+       
+    2: class MachineState(object):
+           """
+           This enum represents the different states a state machine can be in.
+    1:     """
+    1:     START = 0
+    1:     ERROR = 1
+    1:     ITS_ME = 2
+       
+       
+    2: class SequenceLikelihood(object):
+           """
+           This enum represents the likelihood of a character following the previous one.
+    1:     """
+    1:     NEGATIVE = 0
+    1:     UNLIKELY = 1
+    1:     LIKELY = 2
+    1:     POSITIVE = 3
+       
+    1:     @classmethod
+           def get_num_categories(cls):
+               """:returns: The number of likelihood categories in the enum."""
+               return 4
+       
+       
+    2: class CharacterCategory(object):
+           """
+           This enum represents the different categories language models for
+           ``SingleByteCharsetProber`` put characters into.
+       
+           Anything less than CONTROL is considered a letter.
+    1:     """
+    1:     UNDEFINED = 255
+    1:     LINE_BREAK = 254
+    1:     SYMBOL = 253
+    1:     DIGIT = 252
+    1:     CONTROL = 251

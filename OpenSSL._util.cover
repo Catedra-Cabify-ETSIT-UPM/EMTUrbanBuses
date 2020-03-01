@@ -1,0 +1,147 @@
+    1: import sys
+    1: import warnings
+       
+    1: from six import PY3, binary_type, text_type
+       
+    1: from cryptography.hazmat.bindings.openssl.binding import Binding
+       
+       
+    1: binding = Binding()
+    1: binding.init_static_locks()
+    1: ffi = binding.ffi
+    1: lib = binding.lib
+       
+       
+       # This is a special CFFI allocator that does not bother to zero its memory
+       # after allocation. This has vastly better performance on large allocations and
+       # so should be used whenever we don't need the memory zeroed out.
+    1: no_zero_allocator = ffi.new_allocator(should_clear_after_alloc=False)
+       
+       
+    1: def text(charp):
+           """
+           Get a native string type representing of the given CFFI ``char*`` object.
+       
+           :param charp: A C-style string represented using CFFI.
+       
+           :return: :class:`str`
+           """
+           if not charp:
+               return ""
+           return native(ffi.string(charp))
+       
+       
+    1: def exception_from_error_queue(exception_type):
+           """
+           Convert an OpenSSL library failure into a Python exception.
+       
+           When a call to the native OpenSSL library fails, this is usually signalled
+           by the return value, and an error code is stored in an error queue
+           associated with the current thread. The err library provides functions to
+           obtain these error codes and textual error messages.
+           """
+           errors = []
+       
+           while True:
+               error = lib.ERR_get_error()
+               if error == 0:
+                   break
+               errors.append((
+                   text(lib.ERR_lib_error_string(error)),
+                   text(lib.ERR_func_error_string(error)),
+                   text(lib.ERR_reason_error_string(error))))
+       
+           raise exception_type(errors)
+       
+       
+    1: def make_assert(error):
+           """
+           Create an assert function that uses :func:`exception_from_error_queue` to
+           raise an exception wrapped by *error*.
+           """
+    2:     def openssl_assert(ok):
+               """
+               If *ok* is not True, retrieve the error from OpenSSL and raise it.
+               """
+   11:         if ok is not True:
+                   exception_from_error_queue(error)
+       
+    2:     return openssl_assert
+       
+       
+    1: def native(s):
+           """
+           Convert :py:class:`bytes` or :py:class:`unicode` to the native
+           :py:class:`str` type, using UTF-8 encoding if conversion is necessary.
+       
+           :raise UnicodeError: The input string is not UTF-8 decodeable.
+       
+           :raise TypeError: The input is neither :py:class:`bytes` nor
+               :py:class:`unicode`.
+           """
+   42:     if not isinstance(s, (binary_type, text_type)):
+               raise TypeError("%r is neither bytes nor unicode" % s)
+   42:     if PY3:
+   42:         if isinstance(s, binary_type):
+   42:             return s.decode("utf-8")
+           else:
+               if isinstance(s, text_type):
+                   return s.encode("utf-8")
+           return s
+       
+       
+    1: def path_string(s):
+           """
+           Convert a Python string to a :py:class:`bytes` string identifying the same
+           path and which can be passed into an OpenSSL API accepting a filename.
+       
+           :param s: An instance of :py:class:`bytes` or :py:class:`unicode`.
+       
+           :return: An instance of :py:class:`bytes`.
+           """
+    1:     if isinstance(s, binary_type):
+    1:         return s
+           elif isinstance(s, text_type):
+               return s.encode(sys.getfilesystemencoding())
+           else:
+               raise TypeError("Path must be represented as bytes or unicode string")
+       
+       
+    1: if PY3:
+    1:     def byte_string(s):
+    1:         return s.encode("charmap")
+       else:
+           def byte_string(s):
+               return s
+       
+       
+       # A marker object to observe whether some optional arguments are passed any
+       # value or not.
+    1: UNSPECIFIED = object()
+       
+       _TEXT_WARNING = (
+    1:     text_type.__name__ + " for {0} is no longer accepted, use bytes"
+       )
+       
+       
+    1: def text_to_bytes_and_warn(label, obj):
+           """
+           If ``obj`` is text, emit a warning that it should be bytes instead and try
+           to convert it to bytes automatically.
+       
+           :param str label: The name of the parameter from which ``obj`` was taken
+               (so a developer can easily find the source of the problem and correct
+               it).
+       
+           :return: If ``obj`` is the text string type, a ``bytes`` object giving the
+               UTF-8 encoding of that text is returned.  Otherwise, ``obj`` itself is
+               returned.
+           """
+    2:     if isinstance(obj, text_type):
+               warnings.warn(
+                   _TEXT_WARNING.format(label),
+                   category=DeprecationWarning,
+                   stacklevel=3
+               )
+               return obj.encode('utf-8')
+    2:     return obj

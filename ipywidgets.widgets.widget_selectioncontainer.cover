@@ -1,0 +1,82 @@
+       # Copyright (c) Jupyter Development Team.
+       # Distributed under the terms of the Modified BSD License.
+       
+       """SelectionContainer class.
+       
+       Represents a multipage container that can be used to group other widgets into
+       pages.
+    1: """
+       
+    1: from .widget_box import Box
+    1: from .widget import register
+    1: from .widget_core import CoreWidget
+    1: from traitlets import Unicode, Dict, CInt, TraitError, validate
+    1: from ipython_genutils.py3compat import unicode_type
+       
+       
+    2: class _SelectionContainer(Box, CoreWidget):
+    1:     """Base class used to display multiple child widgets."""
+    1:     _titles = Dict(help="Titles of the pages").tag(sync=True)
+    1:     selected_index = CInt(
+    1:         help="""The index of the selected page. This is either an integer selecting a particular sub-widget, or None to have no widgets selected.""",
+    1:         allow_none=True
+    1:     ).tag(sync=True)
+       
+    1:     @validate('selected_index')
+           def _validated_index(self, proposal):
+               if proposal.value is None or 0 <= proposal.value < len(self.children):
+                   return proposal.value
+               else:
+                   raise TraitError('Invalid selection: index out of bounds')
+       
+           # Public methods
+    1:     def set_title(self, index, title):
+               """Sets the title of a container page.
+       
+               Parameters
+               ----------
+               index : int
+                   Index of the container page
+               title : unicode
+                   New title
+               """
+               # JSON dictionaries have string keys, so we convert index to a string
+               index = unicode_type(int(index))
+               self._titles[index] = title
+               self.send_state('_titles')
+       
+    1:     def get_title(self, index):
+               """Gets the title of a container pages.
+       
+               Parameters
+               ----------
+               index : int
+                   Index of the container page
+               """
+               # JSON dictionaries have string keys, so we convert index to a string
+               index = unicode_type(int(index))
+               if index in self._titles:
+                   return self._titles[index]
+               else:
+                   return None
+       
+    1:     def _repr_keys(self):
+               # We also need to include _titles in repr for reproducibility
+               for key in super(_SelectionContainer, self)._repr_keys():
+                   yield key
+               if self._titles:
+                   yield '_titles'
+       
+       
+    2: @register
+    1: class Accordion(_SelectionContainer):
+    1:     """Displays children each on a separate accordion page."""
+    1:     _view_name = Unicode('AccordionView').tag(sync=True)
+    1:     _model_name = Unicode('AccordionModel').tag(sync=True)
+       
+       
+    2: @register
+    1: class Tab(_SelectionContainer):
+    1:     """Displays children each on a separate accordion tab."""
+    1:     _view_name = Unicode('TabView').tag(sync=True)
+    1:     _model_name = Unicode('TabModel').tag(sync=True)

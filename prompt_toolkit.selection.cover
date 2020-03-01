@@ -1,0 +1,47 @@
+       """
+       Data structures for the selection.
+    1: """
+    1: from __future__ import unicode_literals
+       
+       __all__ = [
+    1:     'SelectionType',
+    1:     'PasteMode',
+    1:     'SelectionState',
+       ]
+       
+       
+    2: class SelectionType(object):
+           """
+           Type of selection.
+    1:     """
+           #: Characters. (Visual in Vi.)
+    1:     CHARACTERS = 'CHARACTERS'
+       
+           #: Whole lines. (Visual-Line in Vi.)
+    1:     LINES = 'LINES'
+       
+           #: A block selection. (Visual-Block in Vi.)
+    1:     BLOCK = 'BLOCK'
+       
+       
+    2: class PasteMode(object):
+    1:     EMACS = 'EMACS'  # Yank like emacs.
+    1:     VI_AFTER = 'VI_AFTER'  # When pressing 'p' in Vi.
+    1:     VI_BEFORE = 'VI_BEFORE'  # When pressing 'P' in Vi.
+       
+       
+    2: class SelectionState(object):
+           """
+           State of the current selection.
+       
+           :param original_cursor_position: int
+           :param type: :class:`~.SelectionType`
+    1:     """
+    1:     def __init__(self, original_cursor_position=0, type=SelectionType.CHARACTERS):
+               self.original_cursor_position = original_cursor_position
+               self.type = type
+       
+    1:     def __repr__(self):
+               return '%s(original_cursor_position=%r, type=%r)' % (
+                   self.__class__.__name__,
+                   self.original_cursor_position, self.type)

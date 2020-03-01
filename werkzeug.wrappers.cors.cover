@@ -1,0 +1,102 @@
+    1: from ..http import dump_header
+    1: from ..http import parse_set_header
+    1: from ..utils import environ_property
+    1: from ..utils import header_property
+       
+       
+    2: class CORSRequestMixin(object):
+           """A mixin for :class:`~werkzeug.wrappers.BaseRequest` subclasses
+           that adds descriptors for Cross Origin Resource Sharing (CORS)
+           headers.
+       
+           .. versionadded:: 1.0
+    1:     """
+       
+    1:     origin = environ_property(
+    1:         "HTTP_ORIGIN",
+               doc=(
+    1:             "The host that the request originated from. Set"
+                   " :attr:`~CORSResponseMixin.access_control_allow_origin` on"
+                   " the response to indicate which origins are allowed."
+               ),
+           )
+       
+    1:     access_control_request_headers = environ_property(
+    1:         "HTTP_ACCESS_CONTROL_REQUEST_HEADERS",
+    1:         load_func=parse_set_header,
+               doc=(
+    1:             "Sent with a preflight request to indicate which headers"
+                   " will be sent with the cross origin request. Set"
+                   " :attr:`~CORSResponseMixin.access_control_allow_headers`"
+                   " on the response to indicate which headers are allowed."
+               ),
+           )
+       
+    1:     access_control_request_method = environ_property(
+    1:         "HTTP_ACCESS_CONTROL_REQUEST_METHOD",
+               doc=(
+    1:             "Sent with a preflight request to indicate which method"
+                   " will be used for the cross origin request. Set"
+                   " :attr:`~CORSResponseMixin.access_control_allow_methods`"
+                   " on the response to indicate which methods are allowed."
+               ),
+           )
+       
+       
+    2: class CORSResponseMixin(object):
+           """A mixin for :class:`~werkzeug.wrappers.BaseResponse` subclasses
+           that adds descriptors for Cross Origin Resource Sharing (CORS)
+           headers.
+       
+           .. versionadded:: 1.0
+    1:     """
+       
+    1:     @property
+           def access_control_allow_credentials(self):
+               """Whether credentials can be shared by the browser to
+               JavaScript code. As part of the preflight request it indicates
+               whether credentials can be used on the cross origin request.
+               """
+               return "Access-Control-Allow-Credentials" in self.headers
+       
+    1:     @access_control_allow_credentials.setter
+           def access_control_allow_credentials(self, value):
+               if value is True:
+                   self.headers["Access-Control-Allow-Credentials"] = "true"
+               else:
+                   self.headers.pop("Access-Control-Allow-Credentials", None)
+       
+    1:     access_control_allow_headers = header_property(
+    1:         "Access-Control-Allow-Headers",
+    1:         load_func=parse_set_header,
+    1:         dump_func=dump_header,
+    1:         doc="Which headers can be sent with the cross origin request.",
+           )
+       
+    1:     access_control_allow_methods = header_property(
+    1:         "Access-Control-Allow-Methods",
+    1:         load_func=parse_set_header,
+    1:         dump_func=dump_header,
+    1:         doc="Which methods can be used for the cross origin request.",
+           )
+       
+    1:     access_control_allow_origin = header_property(
+    1:         "Access-Control-Allow-Origin",
+    1:         load_func=parse_set_header,
+    1:         dump_func=dump_header,
+    1:         doc="The origins that may make cross origin requests.",
+           )
+       
+    1:     access_control_expose_headers = header_property(
+    1:         "Access-Control-Expose-Headers",
+    1:         load_func=parse_set_header,
+    1:         dump_func=dump_header,
+    1:         doc="Which headers can be shared by the browser to JavaScript code.",
+           )
+       
+    1:     access_control_max_age = header_property(
+    1:         "Access-Control-Max-Age",
+    1:         load_func=int,
+    1:         dump_func=str,
+    1:         doc="The maximum age in seconds the access control settings can be cached for.",
+           )

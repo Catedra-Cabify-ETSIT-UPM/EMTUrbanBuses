@@ -1,0 +1,226 @@
+       # This file is dual licensed under the terms of the Apache License, Version
+       # 2.0, and the BSD License. See the LICENSE file in the root of this repository
+       # for complete details.
+       
+    1: from __future__ import absolute_import, division, print_function
+       
+    1: from cryptography.hazmat._oid import ObjectIdentifier
+    1: from cryptography.hazmat.primitives import hashes
+       
+       
+    2: class ExtensionOID(object):
+    1:     SUBJECT_DIRECTORY_ATTRIBUTES = ObjectIdentifier("2.5.29.9")
+    1:     SUBJECT_KEY_IDENTIFIER = ObjectIdentifier("2.5.29.14")
+    1:     KEY_USAGE = ObjectIdentifier("2.5.29.15")
+    1:     SUBJECT_ALTERNATIVE_NAME = ObjectIdentifier("2.5.29.17")
+    1:     ISSUER_ALTERNATIVE_NAME = ObjectIdentifier("2.5.29.18")
+    1:     BASIC_CONSTRAINTS = ObjectIdentifier("2.5.29.19")
+    1:     NAME_CONSTRAINTS = ObjectIdentifier("2.5.29.30")
+    1:     CRL_DISTRIBUTION_POINTS = ObjectIdentifier("2.5.29.31")
+    1:     CERTIFICATE_POLICIES = ObjectIdentifier("2.5.29.32")
+    1:     POLICY_MAPPINGS = ObjectIdentifier("2.5.29.33")
+    1:     AUTHORITY_KEY_IDENTIFIER = ObjectIdentifier("2.5.29.35")
+    1:     POLICY_CONSTRAINTS = ObjectIdentifier("2.5.29.36")
+    1:     EXTENDED_KEY_USAGE = ObjectIdentifier("2.5.29.37")
+    1:     FRESHEST_CRL = ObjectIdentifier("2.5.29.46")
+    1:     INHIBIT_ANY_POLICY = ObjectIdentifier("2.5.29.54")
+    1:     ISSUING_DISTRIBUTION_POINT = ObjectIdentifier("2.5.29.28")
+    1:     AUTHORITY_INFORMATION_ACCESS = ObjectIdentifier("1.3.6.1.5.5.7.1.1")
+    1:     SUBJECT_INFORMATION_ACCESS = ObjectIdentifier("1.3.6.1.5.5.7.1.11")
+    1:     OCSP_NO_CHECK = ObjectIdentifier("1.3.6.1.5.5.7.48.1.5")
+    1:     TLS_FEATURE = ObjectIdentifier("1.3.6.1.5.5.7.1.24")
+    1:     CRL_NUMBER = ObjectIdentifier("2.5.29.20")
+    1:     DELTA_CRL_INDICATOR = ObjectIdentifier("2.5.29.27")
+           PRECERT_SIGNED_CERTIFICATE_TIMESTAMPS = (
+    1:         ObjectIdentifier("1.3.6.1.4.1.11129.2.4.2")
+           )
+           PRECERT_POISON = (
+    1:         ObjectIdentifier("1.3.6.1.4.1.11129.2.4.3")
+           )
+       
+       
+    2: class OCSPExtensionOID(object):
+    1:     NONCE = ObjectIdentifier("1.3.6.1.5.5.7.48.1.2")
+       
+       
+    2: class CRLEntryExtensionOID(object):
+    1:     CERTIFICATE_ISSUER = ObjectIdentifier("2.5.29.29")
+    1:     CRL_REASON = ObjectIdentifier("2.5.29.21")
+    1:     INVALIDITY_DATE = ObjectIdentifier("2.5.29.24")
+       
+       
+    2: class NameOID(object):
+    1:     COMMON_NAME = ObjectIdentifier("2.5.4.3")
+    1:     COUNTRY_NAME = ObjectIdentifier("2.5.4.6")
+    1:     LOCALITY_NAME = ObjectIdentifier("2.5.4.7")
+    1:     STATE_OR_PROVINCE_NAME = ObjectIdentifier("2.5.4.8")
+    1:     STREET_ADDRESS = ObjectIdentifier("2.5.4.9")
+    1:     ORGANIZATION_NAME = ObjectIdentifier("2.5.4.10")
+    1:     ORGANIZATIONAL_UNIT_NAME = ObjectIdentifier("2.5.4.11")
+    1:     SERIAL_NUMBER = ObjectIdentifier("2.5.4.5")
+    1:     SURNAME = ObjectIdentifier("2.5.4.4")
+    1:     GIVEN_NAME = ObjectIdentifier("2.5.4.42")
+    1:     TITLE = ObjectIdentifier("2.5.4.12")
+    1:     GENERATION_QUALIFIER = ObjectIdentifier("2.5.4.44")
+    1:     X500_UNIQUE_IDENTIFIER = ObjectIdentifier("2.5.4.45")
+    1:     DN_QUALIFIER = ObjectIdentifier("2.5.4.46")
+    1:     PSEUDONYM = ObjectIdentifier("2.5.4.65")
+    1:     USER_ID = ObjectIdentifier("0.9.2342.19200300.100.1.1")
+    1:     DOMAIN_COMPONENT = ObjectIdentifier("0.9.2342.19200300.100.1.25")
+    1:     EMAIL_ADDRESS = ObjectIdentifier("1.2.840.113549.1.9.1")
+    1:     JURISDICTION_COUNTRY_NAME = ObjectIdentifier("1.3.6.1.4.1.311.60.2.1.3")
+    1:     JURISDICTION_LOCALITY_NAME = ObjectIdentifier("1.3.6.1.4.1.311.60.2.1.1")
+    1:     JURISDICTION_STATE_OR_PROVINCE_NAME = ObjectIdentifier(
+    1:         "1.3.6.1.4.1.311.60.2.1.2"
+           )
+    1:     BUSINESS_CATEGORY = ObjectIdentifier("2.5.4.15")
+    1:     POSTAL_ADDRESS = ObjectIdentifier("2.5.4.16")
+    1:     POSTAL_CODE = ObjectIdentifier("2.5.4.17")
+       
+       
+    2: class SignatureAlgorithmOID(object):
+    1:     RSA_WITH_MD5 = ObjectIdentifier("1.2.840.113549.1.1.4")
+    1:     RSA_WITH_SHA1 = ObjectIdentifier("1.2.840.113549.1.1.5")
+           # This is an alternate OID for RSA with SHA1 that is occasionally seen
+    1:     _RSA_WITH_SHA1 = ObjectIdentifier("1.3.14.3.2.29")
+    1:     RSA_WITH_SHA224 = ObjectIdentifier("1.2.840.113549.1.1.14")
+    1:     RSA_WITH_SHA256 = ObjectIdentifier("1.2.840.113549.1.1.11")
+    1:     RSA_WITH_SHA384 = ObjectIdentifier("1.2.840.113549.1.1.12")
+    1:     RSA_WITH_SHA512 = ObjectIdentifier("1.2.840.113549.1.1.13")
+    1:     RSASSA_PSS = ObjectIdentifier("1.2.840.113549.1.1.10")
+    1:     ECDSA_WITH_SHA1 = ObjectIdentifier("1.2.840.10045.4.1")
+    1:     ECDSA_WITH_SHA224 = ObjectIdentifier("1.2.840.10045.4.3.1")
+    1:     ECDSA_WITH_SHA256 = ObjectIdentifier("1.2.840.10045.4.3.2")
+    1:     ECDSA_WITH_SHA384 = ObjectIdentifier("1.2.840.10045.4.3.3")
+    1:     ECDSA_WITH_SHA512 = ObjectIdentifier("1.2.840.10045.4.3.4")
+    1:     DSA_WITH_SHA1 = ObjectIdentifier("1.2.840.10040.4.3")
+    1:     DSA_WITH_SHA224 = ObjectIdentifier("2.16.840.1.101.3.4.3.1")
+    1:     DSA_WITH_SHA256 = ObjectIdentifier("2.16.840.1.101.3.4.3.2")
+       
+       
+       _SIG_OIDS_TO_HASH = {
+    1:     SignatureAlgorithmOID.RSA_WITH_MD5: hashes.MD5(),
+    1:     SignatureAlgorithmOID.RSA_WITH_SHA1: hashes.SHA1(),
+    1:     SignatureAlgorithmOID._RSA_WITH_SHA1: hashes.SHA1(),
+    1:     SignatureAlgorithmOID.RSA_WITH_SHA224: hashes.SHA224(),
+    1:     SignatureAlgorithmOID.RSA_WITH_SHA256: hashes.SHA256(),
+    1:     SignatureAlgorithmOID.RSA_WITH_SHA384: hashes.SHA384(),
+    1:     SignatureAlgorithmOID.RSA_WITH_SHA512: hashes.SHA512(),
+    1:     SignatureAlgorithmOID.ECDSA_WITH_SHA1: hashes.SHA1(),
+    1:     SignatureAlgorithmOID.ECDSA_WITH_SHA224: hashes.SHA224(),
+    1:     SignatureAlgorithmOID.ECDSA_WITH_SHA256: hashes.SHA256(),
+    1:     SignatureAlgorithmOID.ECDSA_WITH_SHA384: hashes.SHA384(),
+    1:     SignatureAlgorithmOID.ECDSA_WITH_SHA512: hashes.SHA512(),
+    1:     SignatureAlgorithmOID.DSA_WITH_SHA1: hashes.SHA1(),
+    1:     SignatureAlgorithmOID.DSA_WITH_SHA224: hashes.SHA224(),
+    1:     SignatureAlgorithmOID.DSA_WITH_SHA256: hashes.SHA256()
+       }
+       
+       
+    2: class ExtendedKeyUsageOID(object):
+    1:     SERVER_AUTH = ObjectIdentifier("1.3.6.1.5.5.7.3.1")
+    1:     CLIENT_AUTH = ObjectIdentifier("1.3.6.1.5.5.7.3.2")
+    1:     CODE_SIGNING = ObjectIdentifier("1.3.6.1.5.5.7.3.3")
+    1:     EMAIL_PROTECTION = ObjectIdentifier("1.3.6.1.5.5.7.3.4")
+    1:     TIME_STAMPING = ObjectIdentifier("1.3.6.1.5.5.7.3.8")
+    1:     OCSP_SIGNING = ObjectIdentifier("1.3.6.1.5.5.7.3.9")
+    1:     ANY_EXTENDED_KEY_USAGE = ObjectIdentifier("2.5.29.37.0")
+       
+       
+    2: class AuthorityInformationAccessOID(object):
+    1:     CA_ISSUERS = ObjectIdentifier("1.3.6.1.5.5.7.48.2")
+    1:     OCSP = ObjectIdentifier("1.3.6.1.5.5.7.48.1")
+       
+       
+    2: class CertificatePoliciesOID(object):
+    1:     CPS_QUALIFIER = ObjectIdentifier("1.3.6.1.5.5.7.2.1")
+    1:     CPS_USER_NOTICE = ObjectIdentifier("1.3.6.1.5.5.7.2.2")
+    1:     ANY_POLICY = ObjectIdentifier("2.5.29.32.0")
+       
+       
+       _OID_NAMES = {
+    1:     NameOID.COMMON_NAME: "commonName",
+    1:     NameOID.COUNTRY_NAME: "countryName",
+    1:     NameOID.LOCALITY_NAME: "localityName",
+    1:     NameOID.STATE_OR_PROVINCE_NAME: "stateOrProvinceName",
+    1:     NameOID.STREET_ADDRESS: "streetAddress",
+    1:     NameOID.ORGANIZATION_NAME: "organizationName",
+    1:     NameOID.ORGANIZATIONAL_UNIT_NAME: "organizationalUnitName",
+    1:     NameOID.SERIAL_NUMBER: "serialNumber",
+    1:     NameOID.SURNAME: "surname",
+    1:     NameOID.GIVEN_NAME: "givenName",
+    1:     NameOID.TITLE: "title",
+    1:     NameOID.GENERATION_QUALIFIER: "generationQualifier",
+    1:     NameOID.X500_UNIQUE_IDENTIFIER: "x500UniqueIdentifier",
+    1:     NameOID.DN_QUALIFIER: "dnQualifier",
+    1:     NameOID.PSEUDONYM: "pseudonym",
+    1:     NameOID.USER_ID: "userID",
+    1:     NameOID.DOMAIN_COMPONENT: "domainComponent",
+    1:     NameOID.EMAIL_ADDRESS: "emailAddress",
+    1:     NameOID.JURISDICTION_COUNTRY_NAME: "jurisdictionCountryName",
+    1:     NameOID.JURISDICTION_LOCALITY_NAME: "jurisdictionLocalityName",
+    1:     NameOID.JURISDICTION_STATE_OR_PROVINCE_NAME: (
+    1:         "jurisdictionStateOrProvinceName"
+           ),
+    1:     NameOID.BUSINESS_CATEGORY: "businessCategory",
+    1:     NameOID.POSTAL_ADDRESS: "postalAddress",
+    1:     NameOID.POSTAL_CODE: "postalCode",
+       
+    1:     SignatureAlgorithmOID.RSA_WITH_MD5: "md5WithRSAEncryption",
+    1:     SignatureAlgorithmOID.RSA_WITH_SHA1: "sha1WithRSAEncryption",
+    1:     SignatureAlgorithmOID.RSA_WITH_SHA224: "sha224WithRSAEncryption",
+    1:     SignatureAlgorithmOID.RSA_WITH_SHA256: "sha256WithRSAEncryption",
+    1:     SignatureAlgorithmOID.RSA_WITH_SHA384: "sha384WithRSAEncryption",
+    1:     SignatureAlgorithmOID.RSA_WITH_SHA512: "sha512WithRSAEncryption",
+    1:     SignatureAlgorithmOID.RSASSA_PSS: "RSASSA-PSS",
+    1:     SignatureAlgorithmOID.ECDSA_WITH_SHA1: "ecdsa-with-SHA1",
+    1:     SignatureAlgorithmOID.ECDSA_WITH_SHA224: "ecdsa-with-SHA224",
+    1:     SignatureAlgorithmOID.ECDSA_WITH_SHA256: "ecdsa-with-SHA256",
+    1:     SignatureAlgorithmOID.ECDSA_WITH_SHA384: "ecdsa-with-SHA384",
+    1:     SignatureAlgorithmOID.ECDSA_WITH_SHA512: "ecdsa-with-SHA512",
+    1:     SignatureAlgorithmOID.DSA_WITH_SHA1: "dsa-with-sha1",
+    1:     SignatureAlgorithmOID.DSA_WITH_SHA224: "dsa-with-sha224",
+    1:     SignatureAlgorithmOID.DSA_WITH_SHA256: "dsa-with-sha256",
+    1:     ExtendedKeyUsageOID.SERVER_AUTH: "serverAuth",
+    1:     ExtendedKeyUsageOID.CLIENT_AUTH: "clientAuth",
+    1:     ExtendedKeyUsageOID.CODE_SIGNING: "codeSigning",
+    1:     ExtendedKeyUsageOID.EMAIL_PROTECTION: "emailProtection",
+    1:     ExtendedKeyUsageOID.TIME_STAMPING: "timeStamping",
+    1:     ExtendedKeyUsageOID.OCSP_SIGNING: "OCSPSigning",
+    1:     ExtensionOID.SUBJECT_DIRECTORY_ATTRIBUTES: "subjectDirectoryAttributes",
+    1:     ExtensionOID.SUBJECT_KEY_IDENTIFIER: "subjectKeyIdentifier",
+    1:     ExtensionOID.KEY_USAGE: "keyUsage",
+    1:     ExtensionOID.SUBJECT_ALTERNATIVE_NAME: "subjectAltName",
+    1:     ExtensionOID.ISSUER_ALTERNATIVE_NAME: "issuerAltName",
+    1:     ExtensionOID.BASIC_CONSTRAINTS: "basicConstraints",
+    1:     ExtensionOID.PRECERT_SIGNED_CERTIFICATE_TIMESTAMPS: (
+    1:         "signedCertificateTimestampList"
+           ),
+    1:     ExtensionOID.PRECERT_POISON: "ctPoison",
+    1:     CRLEntryExtensionOID.CRL_REASON: "cRLReason",
+    1:     CRLEntryExtensionOID.INVALIDITY_DATE: "invalidityDate",
+    1:     CRLEntryExtensionOID.CERTIFICATE_ISSUER: "certificateIssuer",
+    1:     ExtensionOID.NAME_CONSTRAINTS: "nameConstraints",
+    1:     ExtensionOID.CRL_DISTRIBUTION_POINTS: "cRLDistributionPoints",
+    1:     ExtensionOID.CERTIFICATE_POLICIES: "certificatePolicies",
+    1:     ExtensionOID.POLICY_MAPPINGS: "policyMappings",
+    1:     ExtensionOID.AUTHORITY_KEY_IDENTIFIER: "authorityKeyIdentifier",
+    1:     ExtensionOID.POLICY_CONSTRAINTS: "policyConstraints",
+    1:     ExtensionOID.EXTENDED_KEY_USAGE: "extendedKeyUsage",
+    1:     ExtensionOID.FRESHEST_CRL: "freshestCRL",
+    1:     ExtensionOID.INHIBIT_ANY_POLICY: "inhibitAnyPolicy",
+    1:     ExtensionOID.ISSUING_DISTRIBUTION_POINT: (
+    1:         "issuingDistributionPoint"
+           ),
+    1:     ExtensionOID.AUTHORITY_INFORMATION_ACCESS: "authorityInfoAccess",
+    1:     ExtensionOID.SUBJECT_INFORMATION_ACCESS: "subjectInfoAccess",
+    1:     ExtensionOID.OCSP_NO_CHECK: "OCSPNoCheck",
+    1:     ExtensionOID.CRL_NUMBER: "cRLNumber",
+    1:     ExtensionOID.DELTA_CRL_INDICATOR: "deltaCRLIndicator",
+    1:     ExtensionOID.TLS_FEATURE: "TLSFeature",
+    1:     AuthorityInformationAccessOID.OCSP: "OCSP",
+    1:     AuthorityInformationAccessOID.CA_ISSUERS: "caIssuers",
+    1:     CertificatePoliciesOID.CPS_QUALIFIER: "id-qt-cps",
+    1:     CertificatePoliciesOID.CPS_USER_NOTICE: "id-qt-unotice",
+    1:     OCSPExtensionOID.NONCE: "OCSPNonce",
+       }

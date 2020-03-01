@@ -1,0 +1,16 @@
+       # Copyright (c) Jupyter Development Team.
+       # Distributed under the terms of the Modified BSD License.
+       
+    1: """Contains the Style class"""
+       
+    1: from traitlets import Unicode
+    1: from .widget import Widget
+    1: from .._version import __jupyter_widgets_base_version__
+       
+    2: class Style(Widget):
+    1:     """Style specification"""
+       
+    1:     _model_name = Unicode('StyleModel').tag(sync=True)
+    1:     _view_name = Unicode('StyleView').tag(sync=True)
+    1:     _view_module = Unicode('@jupyter-widgets/base').tag(sync=True)
+    1:     _view_module_version = Unicode(__jupyter_widgets_base_version__).tag(sync=True)

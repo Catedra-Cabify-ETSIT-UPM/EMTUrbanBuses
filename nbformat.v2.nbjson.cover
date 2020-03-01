@@ -1,0 +1,69 @@
+       """Read and write notebooks in JSON format.
+       
+       Authors:
+       
+       * Brian Granger
+    1: """
+       
+       #-----------------------------------------------------------------------------
+       #  Copyright (C) 2008-2011  The IPython Development Team
+       #
+       #  Distributed under the terms of the BSD License.  The full license is in
+       #  the file COPYING, distributed as part of this software.
+       #-----------------------------------------------------------------------------
+       
+       #-----------------------------------------------------------------------------
+       # Imports
+       #-----------------------------------------------------------------------------
+       
+    1: import copy
+    1: import json
+       
+    1: from .nbbase import from_dict
+    1: from .rwbase import (
+           NotebookReader, NotebookWriter, restore_bytes, rejoin_lines, split_lines
+       )
+       
+       #-----------------------------------------------------------------------------
+       # Code
+       #-----------------------------------------------------------------------------
+       
+    2: class BytesEncoder(json.JSONEncoder):
+    1:     """A JSON encoder that accepts b64 (and other *ascii*) bytestrings."""
+    1:     def default(self, obj):
+               if isinstance(obj, bytes):
+                   return obj.decode('ascii')
+               return json.JSONEncoder.default(self, obj)
+       
+       
+    2: class JSONReader(NotebookReader):
+       
+    1:     def reads(self, s, **kwargs):
+               nb = json.loads(s, **kwargs)
+               nb = self.to_notebook(nb, **kwargs)
+               return nb
+       
+    1:     def to_notebook(self, d, **kwargs):
+               return restore_bytes(rejoin_lines(from_dict(d)))
+       
+       
+    2: class JSONWriter(NotebookWriter):
+       
+    1:     def writes(self, nb, **kwargs):
+               kwargs['cls'] = BytesEncoder
+               kwargs['indent'] = 1
+               kwargs['sort_keys'] = True
+               if kwargs.pop('split_lines', True):
+                   nb = split_lines(copy.deepcopy(nb))
+               return json.dumps(nb, **kwargs)
+           
+       
+    1: _reader = JSONReader()
+    1: _writer = JSONWriter()
+       
+    1: reads = _reader.reads
+    1: read = _reader.read
+    1: to_notebook = _reader.to_notebook
+    1: write = _writer.write
+    1: writes = _writer.writes
+       

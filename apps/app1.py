@@ -440,7 +440,7 @@ def update_graph_live(lineId_value,n_intervals):
                 mode='markers',
                 marker=go.scattermapbox.Marker(
                     size=8,
-                    color='purple',
+                    color='black',
                     opacity=0.7
                 ),
                 text=['{}-{}'.format(bus['bus'],bus['stop'])],

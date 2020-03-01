@@ -1,0 +1,41 @@
+    1: import functools
+    1: import flask
+       
+    1: from . import exceptions
+       
+       
+    1: def has_context(func):
+    4:     @functools.wraps(func)
+           def assert_context(*args, **kwargs):
+               if not flask.has_request_context():
+                   raise exceptions.MissingCallbackContextException(
+                       (
+                           'dash.callback_context.{} '
+                           'is only available from a callback!'
+                       ).format(getattr(func, '__name__'))
+                   )
+               return func(*args, **kwargs)
+    4:     return assert_context
+       
+       
+       # pylint: disable=no-init
+    2: class CallbackContext:
+    1:     @property
+    1:     @has_context
+           def inputs(self):
+               return getattr(flask.g, 'input_values', {})
+       
+    1:     @property
+    1:     @has_context
+           def states(self):
+               return getattr(flask.g, 'state_values', {})
+       
+    1:     @property
+    1:     @has_context
+           def triggered(self):
+               return getattr(flask.g, 'triggered_inputs', [])
+       
+    1:     @property
+    1:     @has_context
+           def response(self):
+               return getattr(flask.g, 'dash_response')

@@ -1,0 +1,103 @@
+       """
+       Provide basic components for groupby. These defintiions
+       hold the whitelist of methods that are exposed on the
+       SeriesGroupBy and the DataFrameGroupBy objects.
+    1: """
+    1: from pandas.core.dtypes.common import is_list_like, is_scalar
+       
+       
+    2: class GroupByMixin:
+           """
+           Provide the groupby facilities to the mixed object.
+    1:     """
+       
+    1:     @staticmethod
+           def _dispatch(name, *args, **kwargs):
+               """
+               Dispatch to apply.
+               """
+       
+    3:         def outer(self, *args, **kwargs):
+                   def f(x):
+                       x = self._shallow_copy(x, groupby=self._groupby)
+                       return getattr(x, name)(*args, **kwargs)
+       
+                   return self._groupby.apply(f)
+       
+    3:         outer.__name__ = name
+    3:         return outer
+       
+    1:     def _gotitem(self, key, ndim, subset=None):
+               """
+               Sub-classes to define. Return a sliced object.
+       
+               Parameters
+               ----------
+               key : string / list of selections
+               ndim : 1,2
+                   requested ndim of result
+               subset : object, default None
+                   subset to act on
+               """
+               # create a new object to prevent aliasing
+               if subset is None:
+                   subset = self.obj
+       
+               # we need to make a shallow copy of ourselves
+               # with the same groupby
+               kwargs = {attr: getattr(self, attr) for attr in self._attributes}
+       
+               # Try to select from a DataFrame, falling back to a Series
+               try:
+                   groupby = self._groupby[key]
+               except IndexError:
+                   groupby = self._groupby
+       
+               self = self.__class__(subset, groupby=groupby, parent=self, **kwargs)
+               self._reset_cache()
+               if subset.ndim == 2:
+                   if is_scalar(key) and key in subset or is_list_like(key):
+                       self._selection = key
+               return self
+       
+       
+       # special case to prevent duplicate plots when catching exceptions when
+       # forwarding methods from NDFrames
+    1: plotting_methods = frozenset(["plot", "hist"])
+       
+       common_apply_whitelist = (
+    1:     frozenset(
+               [
+    1:             "quantile",
+    1:             "fillna",
+    1:             "mad",
+    1:             "take",
+    1:             "idxmax",
+    1:             "idxmin",
+    1:             "tshift",
+    1:             "skew",
+    1:             "corr",
+    1:             "cov",
+    1:             "diff",
+               ]
+           )
+    1:     | plotting_methods
+       )
+       
+       series_apply_whitelist = (
+           (
+    1:         common_apply_whitelist
+               | {
+    1:             "nlargest",
+    1:             "nsmallest",
+    1:             "is_monotonic_increasing",
+    1:             "is_monotonic_decreasing",
+               }
+           )
+    1: ) | frozenset(["dtype", "unique"])
+       
+    1: dataframe_apply_whitelist = common_apply_whitelist | frozenset(["dtypes", "corrwith"])
+       
+    1: cython_transforms = frozenset(["cumprod", "cumsum", "shift", "cummin", "cummax"])
+       
+    1: cython_cast_blacklist = frozenset(["rank", "count", "size", "idxmin", "idxmax"])

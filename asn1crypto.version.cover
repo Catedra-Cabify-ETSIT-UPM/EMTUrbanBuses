@@ -1,0 +1,6 @@
+       # coding: utf-8
+    1: from __future__ import unicode_literals, division, absolute_import, print_function
+       
+       
+    1: __version__ = '0.24.0'
+    1: __version_info__ = (0, 24, 0)

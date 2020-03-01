@@ -1,0 +1,34 @@
+       """
+       Stand-alone module to provide information about whether optional deps exist.
+       
+    1: """
+    1: from __future__ import absolute_import
+       
+    1: from importlib import import_module
+    1: import logging
+    1: import sys
+       
+    1: logger = logging.getLogger(__name__)
+    1: _not_importable = set()
+       
+       
+    1: def get_module(name):
+           """
+           Return module or None. Absolute import is required.
+       
+           :param (str) name: Dot-separated module path. E.g., 'scipy.stats'.
+           :raise: (ImportError) Only when exc_msg is defined.
+           :return: (module|None) If import succeeds, the module will be returned.
+       
+           """
+    9:     if name in sys.modules:
+    5:         return sys.modules[name]
+    4:     if name not in _not_importable:
+    4:         try:
+    4:             return import_module(name)
+    1:         except ImportError:
+    1:             _not_importable.add(name)
+               except Exception as e:
+                   _not_importable.add(name)
+                   msg = "Error importing optional module {}".format(name)
+                   logger.exception(msg)

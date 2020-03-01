@@ -1,0 +1,6 @@
+       # -*- coding: utf-8 -*-
+    1: from .backcall import callback_prototype
+       
+    1: __author__ = 'Thomas Kluyver'
+    1: __email__ = 'takowl@gmail.com'
+    1: __version__ = '0.1.0'

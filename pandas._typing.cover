@@ -1,0 +1,34 @@
+    1: from pathlib import Path
+    1: from typing import IO, AnyStr, TypeVar, Union
+       
+    1: import numpy as np
+       
+    1: from pandas._libs import Timestamp
+    1: from pandas._libs.tslibs.period import Period
+    1: from pandas._libs.tslibs.timedeltas import Timedelta
+       
+    1: from pandas.core.dtypes.dtypes import ExtensionDtype
+    1: from pandas.core.dtypes.generic import (
+           ABCDataFrame,
+           ABCExtensionArray,
+           ABCIndexClass,
+           ABCSeries,
+           ABCSparseSeries,
+       )
+       
+    1: AnyArrayLike = TypeVar(
+    1:     "AnyArrayLike",
+    1:     ABCExtensionArray,
+    1:     ABCIndexClass,
+    1:     ABCSeries,
+    1:     ABCSparseSeries,
+    1:     np.ndarray,
+       )
+    1: ArrayLike = TypeVar("ArrayLike", ABCExtensionArray, np.ndarray)
+    1: DatetimeLikeScalar = TypeVar("DatetimeLikeScalar", Period, Timestamp, Timedelta)
+    1: Dtype = Union[str, np.dtype, ExtensionDtype]
+    1: FilePathOrBuffer = Union[str, Path, IO[AnyStr]]
+       
+    1: FrameOrSeries = TypeVar("FrameOrSeries", ABCSeries, ABCDataFrame)
+    1: Scalar = Union[str, int, float]
+    1: Axis = Union[str, int]

@@ -1,0 +1,23 @@
+       # -*- coding: utf-8 -*-
+       
+       
+    1: def cstrencode(pystr):
+           """
+           encode a string into bytes.  If already bytes, do nothing.
+           """
+    1:     try:
+    1:         return pystr.encode("utf-8")
+           except UnicodeDecodeError:
+               return pystr.decode("utf-8").encode("utf-8")
+           except AttributeError:
+               return pystr  # already bytes
+       
+       
+    1: def pystrdecode(cstr):
+           """
+           Decode a string to a python string.
+           """
+  514:     try:
+  514:         return cstr.decode("utf-8")
+           except AttributeError:
+               return cstr

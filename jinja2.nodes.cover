@@ -1,0 +1,999 @@
+       # -*- coding: utf-8 -*-
+       """
+           jinja2.nodes
+           ~~~~~~~~~~~~
+       
+           This module implements additional nodes derived from the ast base node.
+       
+           It also provides some node tree helper functions like `in_lineno` and
+           `get_nodes` used by the parser and translator in order to normalize
+           python and jinja nodes.
+       
+           :copyright: (c) 2017 by the Jinja Team.
+           :license: BSD, see LICENSE for more details.
+    1: """
+    1: import types
+    1: import operator
+       
+    1: from collections import deque
+    1: from jinja2.utils import Markup
+    1: from jinja2._compat import izip, with_metaclass, text_type, PY2
+       
+       
+       #: the types we support for context functions
+    1: _context_function_types = (types.FunctionType, types.MethodType)
+       
+       
+       _binop_to_func = {
+    1:     '*':        operator.mul,
+    1:     '/':        operator.truediv,
+    1:     '//':       operator.floordiv,
+    1:     '**':       operator.pow,
+    1:     '%':        operator.mod,
+    1:     '+':        operator.add,
+    1:     '-':        operator.sub
+       }
+       
+       _uaop_to_func = {
+    1:     'not':      operator.not_,
+    1:     '+':        operator.pos,
+    1:     '-':        operator.neg
+       }
+       
+       _cmpop_to_func = {
+    1:     'eq':       operator.eq,
+    1:     'ne':       operator.ne,
+    1:     'gt':       operator.gt,
+    1:     'gteq':     operator.ge,
+    1:     'lt':       operator.lt,
+    1:     'lteq':     operator.le,
+    1:     'in':       lambda a, b: a in b,
+    1:     'notin':    lambda a, b: a not in b
+       }
+       
+       
+    2: class Impossible(Exception):
+    1:     """Raised if the node could not perform a requested action."""
+       
+       
+    2: class NodeType(type):
+           """A metaclass for nodes that handles the field and attribute
+           inheritance.  fields and attributes from the parent class are
+    1:     automatically forwarded to the child."""
+       
+    1:     def __new__(cls, name, bases, d):
+  201:         for attr in 'fields', 'attributes':
+  134:             storage = []
+  134:             storage.extend(getattr(bases[0], attr, ()))
+  134:             storage.extend(d.get(attr, ()))
+  134:             assert len(bases) == 1, 'multiple inheritance not allowed'
+  134:             assert len(storage) == len(set(storage)), 'layout conflict'
+  134:             d[attr] = tuple(storage)
+   67:         d.setdefault('abstract', False)
+   67:         return type.__new__(cls, name, bases, d)
+       
+       
+    2: class EvalContext(object):
+           """Holds evaluation time information.  Custom attributes can be attached
+           to it in extensions.
+    1:     """
+       
+    1:     def __init__(self, environment, template_name=None):
+   76:         self.environment = environment
+   76:         if callable(environment.autoescape):
+                   self.autoescape = environment.autoescape(template_name)
+               else:
+   76:             self.autoescape = environment.autoescape
+   76:         self.volatile = False
+       
+    1:     def save(self):
+               return self.__dict__.copy()
+       
+    1:     def revert(self, old):
+               self.__dict__.clear()
+               self.__dict__.update(old)
+       
+       
+    1: def get_eval_context(node, ctx):
+  302:     if ctx is None:
+   68:         if node.environment is None:
+                   raise RuntimeError('if no eval context is passed, the '
+                                      'node must have an attached '
+                                      'environment.')
+   68:         return EvalContext(node.environment)
+  234:     return ctx
+       
+       
+    2: class Node(with_metaclass(NodeType, object)):
+           """Baseclass for all Jinja2 nodes.  There are a number of nodes available
+           of different types.  There are four major types:
+       
+           -   :class:`Stmt`: statements
+           -   :class:`Expr`: expressions
+           -   :class:`Helper`: helper nodes
+           -   :class:`Template`: the outermost wrapper node
+       
+           All nodes have fields and attributes.  Fields may be other nodes, lists,
+           or arbitrary values.  Fields are passed to the constructor as regular
+           positional arguments, attributes as keyword arguments.  Each node has
+           two attributes: `lineno` (the line number of the node) and `environment`.
+           The `environment` attribute is set at the end of the parsing process for
+           all nodes automatically.
+    1:     """
+    1:     fields = ()
+    1:     attributes = ('lineno', 'environment')
+    1:     abstract = True
+       
+    1:     def __init__(self, *fields, **attributes):
+  341:         if self.abstract:
+                   raise TypeError('abstract nodes are not instanciable')
+  341:         if fields:
+  333:             if len(fields) != len(self.fields):
+                       if not self.fields:
+                           raise TypeError('%r takes 0 arguments' %
+                                           self.__class__.__name__)
+                       raise TypeError('%r takes 0 or %d argument%s' % (
+                           self.__class__.__name__,
+                           len(self.fields),
+                           len(self.fields) != 1 and 's' or ''
+                       ))
+ 1089:             for name, arg in izip(self.fields, fields):
+  756:                 setattr(self, name, arg)
+ 1023:         for attr in self.attributes:
+  682:             setattr(self, attr, attributes.pop(attr, None))
+  341:         if attributes:
+                   raise TypeError('unknown attribute %r' %
+                                   next(iter(attributes)))
+       
+    1:     def iter_fields(self, exclude=None, only=None):
+               """This method iterates over all fields that are defined and yields
+               ``(key, value)`` tuples.  Per default all fields are returned, but
+               it's possible to limit that to some fields by providing the `only`
+               parameter or to exclude some using the `exclude` parameter.  Both
+               should be sets or tuples of field names.
+               """
+10941:         for name in self.fields:
+ 7824:             if (exclude is only is None) or \
+    6:                (exclude is not None and name not in exclude) or \
+    6:                (only is not None and name in only):
+ 7819:                 try:
+ 7819:                     yield name, getattr(self, name)
+                       except AttributeError:
+                           pass
+       
+    1:     def iter_child_nodes(self, exclude=None, only=None):
+               """Iterates over all direct child nodes of the node.  This iterates
+               over all fields and yields the values of they are nodes.  If the value
+               of a field is a list all the nodes in that list are returned.
+               """
+ 8462:         for field, item in self.iter_fields(exclude, only):
+ 5950:             if isinstance(item, list):
+ 2382:                 for n in item:
+ 1367:                     if isinstance(n, Node):
+ 1367:                         yield n
+ 4935:             elif isinstance(item, Node):
+ 1317:                 yield item
+       
+    1:     def find(self, node_type):
+               """Find the first node of a given type.  If no such node exists the
+               return value is `None`.
+               """
+    8:         for result in self.find_all(node_type):
+                   return result
+       
+    1:     def find_all(self, node_type):
+               """Find all the nodes of a given type.  If the type is a tuple,
+               the check is performed for any of the tuple items.
+               """
+ 2019:         for child in self.iter_child_nodes():
+  997:             if isinstance(child, node_type):
+    5:                 yield child
+ 1007:             for result in child.find_all(node_type):
+   10:                 yield result
+       
+    1:     def set_ctx(self, ctx):
+               """Reset the context of a node and all child nodes.  Per default the
+               parser will all generate nodes that have a 'load' context as it's the
+               most common one.  This method is used in the parser to set assignment
+               targets and other nodes to a store context.
+               """
+    7:         todo = deque([self])
+   16:         while todo:
+    9:             node = todo.popleft()
+    9:             if 'ctx' in node.fields:
+    9:                 node.ctx = ctx
+    9:             todo.extend(node.iter_child_nodes())
+    7:         return self
+       
+    1:     def set_lineno(self, lineno, override=False):
+               """Set the line numbers of the node and children."""
+               todo = deque([self])
+               while todo:
+                   node = todo.popleft()
+                   if 'lineno' in node.attributes:
+                       if node.lineno is None or override:
+                           node.lineno = lineno
+                   todo.extend(node.iter_child_nodes())
+               return self
+       
+    1:     def set_environment(self, environment):
+               """Set the environment for all nodes."""
+    8:         todo = deque([self])
+  344:         while todo:
+  336:             node = todo.popleft()
+  336:             node.environment = environment
+  336:             todo.extend(node.iter_child_nodes())
+    8:         return self
+       
+    1:     def __eq__(self, other):
+  128:         return type(self) is type(other) and \
+  128:                tuple(self.iter_fields()) == tuple(other.iter_fields())
+       
+    1:     def __ne__(self, other):
+  128:         return not self.__eq__(other)
+       
+           # Restore Python 2 hashing behavior on Python 3
+    1:     __hash__ = object.__hash__
+       
+    1:     def __repr__(self):
+               return '%s(%s)' % (
+                   self.__class__.__name__,
+                   ', '.join('%s=%r' % (arg, getattr(self, arg, None)) for
+                             arg in self.fields)
+               )
+       
+    1:     def dump(self):
+               def _dump(node):
+                   if not isinstance(node, Node):
+                       buf.append(repr(node))
+                       return
+       
+                   buf.append('nodes.%s(' % node.__class__.__name__)
+                   if not node.fields:
+                       buf.append(')')
+                       return
+                   for idx, field in enumerate(node.fields):
+                       if idx:
+                           buf.append(', ')
+                       value = getattr(node, field)
+                       if isinstance(value, list):
+                           buf.append('[')
+                           for idx, item in enumerate(value):
+                               if idx:
+                                   buf.append(', ')
+                               _dump(item)
+                           buf.append(']')
+                       else:
+                           _dump(value)
+                   buf.append(')')
+               buf = []
+               _dump(self)
+               return ''.join(buf)
+       
+       
+       
+    2: class Stmt(Node):
+    1:     """Base node for all statements."""
+    1:     abstract = True
+       
+       
+    2: class Helper(Node):
+    1:     """Nodes that exist in a specific context only."""
+    1:     abstract = True
+       
+       
+    2: class Template(Node):
+           """Node that represents a template.  This must be the outermost node that
+           is passed to the compiler.
+    1:     """
+    1:     fields = ('body',)
+       
+       
+    2: class Output(Stmt):
+           """A node that holds multiple expressions which are then printed out.
+           This is used both for the `print` statement and the regular template data.
+    1:     """
+    1:     fields = ('nodes',)
+       
+       
+    2: class Extends(Stmt):
+    1:     """Represents an extends statement."""
+    1:     fields = ('template',)
+       
+       
+    2: class For(Stmt):
+           """The for loop.  `target` is the target for the iteration (usually a
+           :class:`Name` or :class:`Tuple`), `iter` the iterable.  `body` is a list
+           of nodes that are used as loop-body, and `else_` a list of nodes for the
+           `else` block.  If no else node exists it has to be an empty list.
+       
+           For filtered nodes an expression can be stored as `test`, otherwise `None`.
+    1:     """
+    1:     fields = ('target', 'iter', 'body', 'else_', 'test', 'recursive')
+       
+       
+    2: class If(Stmt):
+    1:     """If `test` is true, `body` is rendered, else `else_`."""
+    1:     fields = ('test', 'body', 'elif_', 'else_')
+       
+       
+    2: class Macro(Stmt):
+           """A macro definition.  `name` is the name of the macro, `args` a list of
+           arguments and `defaults` a list of defaults if there are any.  `body` is
+           a list of nodes for the macro body.
+    1:     """
+    1:     fields = ('name', 'args', 'defaults', 'body')
+       
+       
+    2: class CallBlock(Stmt):
+           """Like a macro without a name but a call instead.  `call` is called with
+           the unnamed macro as `caller` argument this node holds.
+    1:     """
+    1:     fields = ('call', 'args', 'defaults', 'body')
+       
+       
+    2: class FilterBlock(Stmt):
+    1:     """Node for filter sections."""
+    1:     fields = ('body', 'filter')
+       
+       
+    2: class With(Stmt):
+           """Specific node for with statements.  In older versions of Jinja the
+           with statement was implemented on the base of the `Scope` node instead.
+       
+           .. versionadded:: 2.9.3
+    1:     """
+    1:     fields = ('targets', 'values', 'body')
+       
+       
+    2: class Block(Stmt):
+    1:     """A node that represents a block."""
+    1:     fields = ('name', 'body', 'scoped')
+       
+       
+    2: class Include(Stmt):
+    1:     """A node that represents the include tag."""
+    1:     fields = ('template', 'with_context', 'ignore_missing')
+       
+       
+    2: class Import(Stmt):
+    1:     """A node that represents the import tag."""
+    1:     fields = ('template', 'target', 'with_context')
+       
+       
+    2: class FromImport(Stmt):
+           """A node that represents the from import tag.  It's important to not
+           pass unsafe names to the name attribute.  The compiler translates the
+           attribute lookups directly into getattr calls and does *not* use the
+           subscript callback of the interface.  As exported variables may not
+           start with double underscores (which the parser asserts) this is not a
+           problem for regular Jinja code, but if this node is used in an extension
+           extra care must be taken.
+       
+           The list of names may contain tuples if aliases are wanted.
+    1:     """
+    1:     fields = ('template', 'names', 'with_context')
+       
+       
+    2: class ExprStmt(Stmt):
+    1:     """A statement that evaluates an expression and discards the result."""
+    1:     fields = ('node',)
+       
+       
+    2: class Assign(Stmt):
+    1:     """Assigns an expression to a target."""
+    1:     fields = ('target', 'node')
+       
+       
+    2: class AssignBlock(Stmt):
+    1:     """Assigns a block to a target."""
+    1:     fields = ('target', 'filter', 'body')
+       
+       
+    2: class Expr(Node):
+    1:     """Baseclass for all expressions."""
+    1:     abstract = True
+       
+    1:     def as_const(self, eval_ctx=None):
+               """Return the value of the expression as constant or raise
+               :exc:`Impossible` if this was not possible.
+       
+               An :class:`EvalContext` can be provided, if none is given
+               a default context is created which requires the nodes to have
+               an attached environment.
+       
+               .. versionchanged:: 2.4
+                  the `eval_ctx` parameter was added.
+               """
+  256:         raise Impossible()
+       
+    1:     def can_assign(self):
+               """Check if it's possible to assign something to this node."""
+               return False
+       
+       
+    2: class BinExpr(Expr):
+    1:     """Baseclass for all binary expressions."""
+    1:     fields = ('left', 'right')
+    1:     operator = None
+    1:     abstract = True
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               # intercepted operators cannot be folded at compile time
+               if self.environment.sandboxed and \
+                  self.operator in self.environment.intercepted_binops:
+                   raise Impossible()
+               f = _binop_to_func[self.operator]
+               try:
+                   return f(self.left.as_const(eval_ctx), self.right.as_const(eval_ctx))
+               except Exception:
+                   raise Impossible()
+       
+       
+    2: class UnaryExpr(Expr):
+    1:     """Baseclass for all unary expressions."""
+    1:     fields = ('node',)
+    1:     operator = None
+    1:     abstract = True
+       
+    1:     def as_const(self, eval_ctx=None):
+    2:         eval_ctx = get_eval_context(self, eval_ctx)
+               # intercepted operators cannot be folded at compile time
+    2:         if self.environment.sandboxed and \
+                  self.operator in self.environment.intercepted_unops:
+                   raise Impossible()
+    2:         f = _uaop_to_func[self.operator]
+    2:         try:
+    2:             return f(self.node.as_const(eval_ctx))
+               except Exception:
+                   raise Impossible()
+       
+       
+    2: class Name(Expr):
+           """Looks up a name or stores a value in a name.
+           The `ctx` of the node can be one of the following values:
+       
+           -   `store`: store a value in the name
+           -   `load`: load that name
+           -   `param`: like `store` but if the name was defined as function parameter.
+    1:     """
+    1:     fields = ('name', 'ctx')
+       
+    1:     def can_assign(self):
+   11:         return self.name not in ('true', 'false', 'none',
+                                        'True', 'False', 'None')
+       
+       
+    2: class NSRef(Expr):
+    1:     """Reference to a namespace value assignment"""
+    1:     fields = ('name', 'attr')
+       
+    1:     def can_assign(self):
+               # We don't need any special checks here; NSRef assignments have a
+               # runtime check to ensure the target is a namespace object which will
+               # have been checked already as it is created using a normal assignment
+               # which goes through a `Name` node.
+               return True
+       
+       
+    2: class Literal(Expr):
+    1:     """Baseclass for literals."""
+    1:     abstract = True
+       
+       
+    2: class Const(Literal):
+           """All constant values.  The parser will return this node for simple
+           constants such as ``42`` or ``"foo"`` but it can be used to store more
+           complex values such as lists too.  Only constants with a safe
+           representation (objects where ``eval(repr(x)) == x`` is true).
+    1:     """
+    1:     fields = ('value',)
+       
+    1:     def as_const(self, eval_ctx=None):
+   22:         rv = self.value
+   22:         if PY2 and type(rv) is text_type and \
+                  self.environment.policies['compiler.ascii_str']:
+                   try:
+                       rv = rv.encode('ascii')
+                   except UnicodeError:
+                       pass
+   22:         return rv
+       
+    1:     @classmethod
+    1:     def from_untrusted(cls, value, lineno=None, environment=None):
+               """Return a const object if the value is representable as
+               constant value in the generated code, otherwise it will raise
+               an `Impossible` exception.
+               """
+    2:         from .compiler import has_safe_repr
+    2:         if not has_safe_repr(value):
+                   raise Impossible()
+    2:         return cls(value, lineno=lineno, environment=environment)
+       
+       
+    2: class TemplateData(Literal):
+    1:     """A constant template string."""
+    1:     fields = ('data',)
+       
+    1:     def as_const(self, eval_ctx=None):
+   69:         eval_ctx = get_eval_context(self, eval_ctx)
+   69:         if eval_ctx.volatile:
+                   raise Impossible()
+   69:         if eval_ctx.autoescape:
+                   return Markup(self.data)
+   69:         return self.data
+       
+       
+    2: class Tuple(Literal):
+           """For loop unpacking and some other things like multiple arguments
+           for subscripts.  Like for :class:`Name` `ctx` specifies if the tuple
+           is used for loading the names or storing.
+    1:     """
+    1:     fields = ('items', 'ctx')
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               return tuple(x.as_const(eval_ctx) for x in self.items)
+       
+    1:     def can_assign(self):
+    3:         for item in self.items:
+    2:             if not item.can_assign():
+                       return False
+    1:         return True
+       
+       
+    2: class List(Literal):
+    1:     """Any list literal such as ``[1, 2, 3]``"""
+    1:     fields = ('items',)
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               return [x.as_const(eval_ctx) for x in self.items]
+       
+       
+    2: class Dict(Literal):
+           """Any dict literal such as ``{1: 2, 3: 4}``.  The items must be a list of
+           :class:`Pair` nodes.
+    1:     """
+    1:     fields = ('items',)
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               return dict(x.as_const(eval_ctx) for x in self.items)
+       
+       
+    2: class Pair(Helper):
+    1:     """A key, value pair for dicts."""
+    1:     fields = ('key', 'value')
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               return self.key.as_const(eval_ctx), self.value.as_const(eval_ctx)
+       
+       
+    2: class Keyword(Helper):
+    1:     """A key, value pair for keyword arguments where key is a string."""
+    1:     fields = ('key', 'value')
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               return self.key, self.value.as_const(eval_ctx)
+       
+       
+    2: class CondExpr(Expr):
+           """A conditional expression (inline if expression).  (``{{
+           foo if bar else baz }}``)
+    1:     """
+    1:     fields = ('test', 'expr1', 'expr2')
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               if self.test.as_const(eval_ctx):
+                   return self.expr1.as_const(eval_ctx)
+       
+               # if we evaluate to an undefined object, we better do that at runtime
+               if self.expr2 is None:
+                   raise Impossible()
+       
+               return self.expr2.as_const(eval_ctx)
+       
+       
+    1: def args_as_const(node, eval_ctx):
+    4:     args = [x.as_const(eval_ctx) for x in node.args]
+    4:     kwargs = dict(x.as_const(eval_ctx) for x in node.kwargs)
+       
+    2:     if node.dyn_args is not None:
+               try:
+                   args.extend(node.dyn_args.as_const(eval_ctx))
+               except Exception:
+                   raise Impossible()
+       
+    2:     if node.dyn_kwargs is not None:
+               try:
+                   kwargs.update(node.dyn_kwargs.as_const(eval_ctx))
+               except Exception:
+                   raise Impossible()
+       
+    2:     return args, kwargs
+       
+       
+    2: class Filter(Expr):
+           """This node applies a filter on an expression.  `name` is the name of
+           the filter, the rest of the fields are the same as for :class:`Call`.
+       
+           If the `node` of a filter is `None` the contents of the last buffer are
+           filtered.  Buffers are created by macros and filter blocks.
+    1:     """
+       
+    1:     fields = ('node', 'name', 'args', 'kwargs', 'dyn_args', 'dyn_kwargs')
+       
+    1:     def as_const(self, eval_ctx=None):
+    2:         eval_ctx = get_eval_context(self, eval_ctx)
+       
+    2:         if eval_ctx.volatile or self.node is None:
+                   raise Impossible()
+       
+               # we have to be careful here because we call filter_ below.
+               # if this variable would be called filter, 2to3 would wrap the
+               # call in a list beause it is assuming we are talking about the
+               # builtin filter function here which no longer returns a list in
+               # python 3.  because of that, do not rename filter_ to filter!
+    2:         filter_ = self.environment.filters.get(self.name)
+       
+    2:         if filter_ is None or getattr(filter_, 'contextfilter', False):
+                   raise Impossible()
+       
+               # We cannot constant handle async filters, so we need to make sure
+               # to not go down this path.
+               if (
+    2:             eval_ctx.environment.is_async
+                   and getattr(filter_, 'asyncfiltervariant', False)
+               ):
+                   raise Impossible()
+       
+    2:         args, kwargs = args_as_const(self, eval_ctx)
+    2:         args.insert(0, self.node.as_const(eval_ctx))
+       
+               if getattr(filter_, 'evalcontextfilter', False):
+                   args.insert(0, eval_ctx)
+               elif getattr(filter_, 'environmentfilter', False):
+                   args.insert(0, self.environment)
+       
+               try:
+                   return filter_(*args, **kwargs)
+               except Exception:
+                   raise Impossible()
+       
+       
+    2: class Test(Expr):
+           """Applies a test on an expression.  `name` is the name of the test, the
+           rest of the fields are the same as for :class:`Call`.
+    1:     """
+       
+    1:     fields = ('node', 'name', 'args', 'kwargs', 'dyn_args', 'dyn_kwargs')
+       
+    1:     def as_const(self, eval_ctx=None):
+               test = self.environment.tests.get(self.name)
+       
+               if test is None:
+                   raise Impossible()
+       
+               eval_ctx = get_eval_context(self, eval_ctx)
+               args, kwargs = args_as_const(self, eval_ctx)
+               args.insert(0, self.node.as_const(eval_ctx))
+       
+               try:
+                   return test(*args, **kwargs)
+               except Exception:
+                   raise Impossible()
+       
+       
+    2: class Call(Expr):
+           """Calls an expression.  `args` is a list of arguments, `kwargs` a list
+           of keyword arguments (list of :class:`Keyword` nodes), and `dyn_args`
+           and `dyn_kwargs` has to be either `None` or a node that is used as
+           node for dynamic positional (``*args``) or keyword (``**kwargs``)
+           arguments.
+    1:     """
+    1:     fields = ('node', 'args', 'kwargs', 'dyn_args', 'dyn_kwargs')
+       
+       
+    2: class Getitem(Expr):
+    1:     """Get an attribute or item from an expression and prefer the item."""
+    1:     fields = ('node', 'arg', 'ctx')
+       
+    1:     def as_const(self, eval_ctx=None):
+   32:         eval_ctx = get_eval_context(self, eval_ctx)
+   32:         if self.ctx != 'load':
+                   raise Impossible()
+   32:         try:
+   32:             return self.environment.getitem(self.node.as_const(eval_ctx),
+                                                   self.arg.as_const(eval_ctx))
+   32:         except Exception:
+   32:             raise Impossible()
+       
+    1:     def can_assign(self):
+               return False
+       
+       
+    2: class Getattr(Expr):
+           """Get an attribute or item from an expression that is a ascii-only
+           bytestring and prefer the attribute.
+    1:     """
+    1:     fields = ('node', 'attr', 'ctx')
+       
+    1:     def as_const(self, eval_ctx=None):
+  197:         if self.ctx != 'load':
+                   raise Impossible()
+  197:         try:
+  197:             eval_ctx = get_eval_context(self, eval_ctx)
+  197:             return self.environment.getattr(self.node.as_const(eval_ctx),
+                                                   self.attr)
+  197:         except Exception:
+  197:             raise Impossible()
+       
+    1:     def can_assign(self):
+               return False
+       
+       
+    2: class Slice(Expr):
+           """Represents a slice object.  This must only be used as argument for
+           :class:`Subscript`.
+    1:     """
+    1:     fields = ('start', 'stop', 'step')
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               def const(obj):
+                   if obj is None:
+                       return None
+                   return obj.as_const(eval_ctx)
+               return slice(const(self.start), const(self.stop), const(self.step))
+       
+       
+    2: class Concat(Expr):
+           """Concatenates the list of expressions provided after converting them to
+           unicode.
+    1:     """
+    1:     fields = ('nodes',)
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               return ''.join(text_type(x.as_const(eval_ctx)) for x in self.nodes)
+       
+       
+    2: class Compare(Expr):
+           """Compares an expression with some other expressions.  `ops` must be a
+           list of :class:`Operand`\\s.
+    1:     """
+    1:     fields = ('expr', 'ops')
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               result = value = self.expr.as_const(eval_ctx)
+               try:
+                   for op in self.ops:
+                       new_value = op.expr.as_const(eval_ctx)
+                       result = _cmpop_to_func[op.op](value, new_value)
+                       value = new_value
+               except Exception:
+                   raise Impossible()
+               return result
+       
+       
+    2: class Operand(Helper):
+    1:     """Holds an operator and an expression."""
+    1:     fields = ('op', 'expr')
+       
+       if __debug__:
+    1:     Operand.__doc__ += '\nThe following operators are available: ' + \
+   18:         ', '.join(sorted('``%s``' % x for x in set(_binop_to_func) |
+    1:                   set(_uaop_to_func) | set(_cmpop_to_func)))
+       
+       
+    2: class Mul(BinExpr):
+    1:     """Multiplies the left with the right node."""
+    1:     operator = '*'
+       
+       
+    2: class Div(BinExpr):
+    1:     """Divides the left by the right node."""
+    1:     operator = '/'
+       
+       
+    2: class FloorDiv(BinExpr):
+           """Divides the left by the right node and truncates conver the
+           result into an integer by truncating.
+    1:     """
+    1:     operator = '//'
+       
+       
+    2: class Add(BinExpr):
+    1:     """Add the left to the right node."""
+    1:     operator = '+'
+       
+       
+    2: class Sub(BinExpr):
+    1:     """Subtract the right from the left node."""
+    1:     operator = '-'
+       
+       
+    2: class Mod(BinExpr):
+    1:     """Left modulo right."""
+    1:     operator = '%'
+       
+       
+    2: class Pow(BinExpr):
+    1:     """Left to the power of right."""
+    1:     operator = '**'
+       
+       
+    2: class And(BinExpr):
+    1:     """Short circuited AND."""
+    1:     operator = 'and'
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               return self.left.as_const(eval_ctx) and self.right.as_const(eval_ctx)
+       
+       
+    2: class Or(BinExpr):
+    1:     """Short circuited OR."""
+    1:     operator = 'or'
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               return self.left.as_const(eval_ctx) or self.right.as_const(eval_ctx)
+       
+       
+    2: class Not(UnaryExpr):
+    1:     """Negate the expression."""
+    1:     operator = 'not'
+       
+       
+    2: class Neg(UnaryExpr):
+    1:     """Make the expression negative."""
+    1:     operator = '-'
+       
+       
+    2: class Pos(UnaryExpr):
+    1:     """Make the expression positive (noop for most expressions)"""
+    1:     operator = '+'
+       
+       
+       # Helpers for extensions
+       
+       
+    2: class EnvironmentAttribute(Expr):
+           """Loads an attribute from the environment object.  This is useful for
+           extensions that want to call a callback stored on the environment.
+    1:     """
+    1:     fields = ('name',)
+       
+       
+    2: class ExtensionAttribute(Expr):
+           """Returns the attribute of an extension bound to the environment.
+           The identifier is the identifier of the :class:`Extension`.
+       
+           This node is usually constructed by calling the
+           :meth:`~jinja2.ext.Extension.attr` method on an extension.
+    1:     """
+    1:     fields = ('identifier', 'name')
+       
+       
+    2: class ImportedName(Expr):
+           """If created with an import name the import name is returned on node
+           access.  For example ``ImportedName('cgi.escape')`` returns the `escape`
+           function from the cgi module on evaluation.  Imports are optimized by the
+           compiler so there is no need to assign them to local variables.
+    1:     """
+    1:     fields = ('importname',)
+       
+       
+    2: class InternalName(Expr):
+           """An internal name in the compiler.  You cannot create these nodes
+           yourself but the parser provides a
+           :meth:`~jinja2.parser.Parser.free_identifier` method that creates
+           a new identifier for you.  This identifier is not available from the
+           template and is not threated specially by the compiler.
+    1:     """
+    1:     fields = ('name',)
+       
+    1:     def __init__(self):
+               raise TypeError('Can\'t create internal names.  Use the '
+                               '`free_identifier` method on a parser.')
+       
+       
+    2: class MarkSafe(Expr):
+    1:     """Mark the wrapped expression as safe (wrap it as `Markup`)."""
+    1:     fields = ('expr',)
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               return Markup(self.expr.as_const(eval_ctx))
+       
+       
+    2: class MarkSafeIfAutoescape(Expr):
+           """Mark the wrapped expression as safe (wrap it as `Markup`) but
+           only if autoescaping is active.
+       
+           .. versionadded:: 2.5
+    1:     """
+    1:     fields = ('expr',)
+       
+    1:     def as_const(self, eval_ctx=None):
+               eval_ctx = get_eval_context(self, eval_ctx)
+               if eval_ctx.volatile:
+                   raise Impossible()
+               expr = self.expr.as_const(eval_ctx)
+               if eval_ctx.autoescape:
+                   return Markup(expr)
+               return expr
+       
+       
+    2: class ContextReference(Expr):
+           """Returns the current template context.  It can be used like a
+           :class:`Name` node, with a ``'load'`` ctx and will return the
+           current :class:`~jinja2.runtime.Context` object.
+       
+           Here an example that assigns the current template name to a
+           variable named `foo`::
+       
+               Assign(Name('foo', ctx='store'),
+                      Getattr(ContextReference(), 'name'))
+    1:     """
+       
+       
+    2: class Continue(Stmt):
+    1:     """Continue a loop."""
+       
+       
+    2: class Break(Stmt):
+    1:     """Break a loop."""
+       
+       
+    2: class Scope(Stmt):
+    1:     """An artificial scope."""
+    1:     fields = ('body',)
+       
+       
+    2: class OverlayScope(Stmt):
+           """An overlay scope for extensions.  This is a largely unoptimized scope
+           that however can be used to introduce completely arbitrary variables into
+           a sub scope from a dictionary or dictionary like object.  The `context`
+           field has to evaluate to a dictionary object.
+       
+           Example usage::
+       
+               OverlayScope(context=self.call_method('get_context'),
+                            body=[...])
+       
+           .. versionadded:: 2.10
+    1:     """
+    1:     fields = ('context', 'body')
+       
+       
+    2: class EvalContextModifier(Stmt):
+           """Modifies the eval context.  For each option that should be modified,
+           a :class:`Keyword` has to be added to the :attr:`options` list.
+       
+           Example to change the `autoescape` setting::
+       
+               EvalContextModifier(options=[Keyword('autoescape', Const(True))])
+    1:     """
+    1:     fields = ('options',)
+       
+       
+    2: class ScopedEvalContextModifier(EvalContextModifier):
+           """Modifies the eval context and reverts it later.  Works exactly like
+           :class:`EvalContextModifier` but will only modify the
+           :class:`~jinja2.nodes.EvalContext` for nodes in the :attr:`body`.
+    1:     """
+    1:     fields = ('body',)
+       
+       
+       # make sure nobody creates custom nodes
+    1: def _failing_new(*args, **kwargs):
+           raise TypeError('can\'t create custom node types')
+    1: NodeType.__new__ = staticmethod(_failing_new); del _failing_new

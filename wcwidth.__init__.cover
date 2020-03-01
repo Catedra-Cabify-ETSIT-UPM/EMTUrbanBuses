@@ -1,0 +1,4 @@
+    1: """wcwidth module, https://github.com/jquast/wcwidth."""
+    1: from .wcwidth import wcwidth, wcswidth  # noqa
+       
+    1: __all__ = ('wcwidth', 'wcswidth',)

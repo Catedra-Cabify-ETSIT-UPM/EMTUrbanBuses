@@ -1,0 +1,186 @@
+       """
+       A module for parsing and generating `fontconfig patterns`_.
+       
+       .. _fontconfig patterns:
+          https://www.freedesktop.org/software/fontconfig/fontconfig-user.html
+    1: """
+       
+       # This class is defined here because it must be available in:
+       #   - The old-style config framework (:file:`rcsetup.py`)
+       #   - The font manager (:file:`font_manager.py`)
+       
+       # It probably logically belongs in :file:`font_manager.py`, but placing it
+       # there would have created cyclical dependency problems.
+       
+    1: from functools import lru_cache
+    1: import re
+       
+    1: from pyparsing import (Literal, ZeroOrMore, Optional, Regex, StringEnd,
+                              ParseException, Suppress)
+       
+    1: family_punc = r'\\\-:,'
+    1: family_unescape = re.compile(r'\\([%s])' % family_punc).sub
+    1: family_escape = re.compile(r'([%s])' % family_punc).sub
+       
+    1: value_punc = r'\\=_:,'
+    1: value_unescape = re.compile(r'\\([%s])' % value_punc).sub
+    1: value_escape = re.compile(r'([%s])' % value_punc).sub
+       
+       
+    2: class FontconfigPatternParser(object):
+           """
+           A simple pyparsing-based parser for `fontconfig patterns`_.
+       
+           .. _fontconfig patterns:
+              https://www.freedesktop.org/software/fontconfig/fontconfig-user.html
+    1:     """
+       
+           _constants = {
+    1:         'thin'           : ('weight', 'light'),
+    1:         'extralight'     : ('weight', 'light'),
+    1:         'ultralight'     : ('weight', 'light'),
+    1:         'light'          : ('weight', 'light'),
+    1:         'book'           : ('weight', 'book'),
+    1:         'regular'        : ('weight', 'regular'),
+    1:         'normal'         : ('weight', 'normal'),
+    1:         'medium'         : ('weight', 'medium'),
+    1:         'demibold'       : ('weight', 'demibold'),
+    1:         'semibold'       : ('weight', 'semibold'),
+    1:         'bold'           : ('weight', 'bold'),
+    1:         'extrabold'      : ('weight', 'extra bold'),
+    1:         'black'          : ('weight', 'black'),
+    1:         'heavy'          : ('weight', 'heavy'),
+    1:         'roman'          : ('slant', 'normal'),
+    1:         'italic'         : ('slant', 'italic'),
+    1:         'oblique'        : ('slant', 'oblique'),
+    1:         'ultracondensed' : ('width', 'ultra-condensed'),
+    1:         'extracondensed' : ('width', 'extra-condensed'),
+    1:         'condensed'      : ('width', 'condensed'),
+    1:         'semicondensed'  : ('width', 'semi-condensed'),
+    1:         'expanded'       : ('width', 'expanded'),
+    1:         'extraexpanded'  : ('width', 'extra-expanded'),
+    1:         'ultraexpanded'  : ('width', 'ultra-expanded')
+               }
+       
+    1:     def __init__(self):
+    1:         family      = Regex(r'([^%s]|(\\[%s]))*' %
+    1:                             (family_punc, family_punc)) \
+    1:                       .setParseAction(self._family)
+    1:         size        = Regex(r"([0-9]+\.?[0-9]*|\.[0-9]+)") \
+    1:                       .setParseAction(self._size)
+    1:         name        = Regex(r'[a-z]+') \
+    1:                       .setParseAction(self._name)
+    1:         value       = Regex(r'([^%s]|(\\[%s]))*' %
+    1:                             (value_punc, value_punc)) \
+    1:                       .setParseAction(self._value)
+       
+    1:         families    =(family
+    1:                     + ZeroOrMore(
+    1:                         Literal(',')
+    1:                       + family)
+    1:                     ).setParseAction(self._families)
+       
+    1:         point_sizes =(size
+    1:                     + ZeroOrMore(
+    1:                         Literal(',')
+    1:                       + size)
+    1:                     ).setParseAction(self._point_sizes)
+       
+               property    =( (name
+                             + Suppress(Literal('='))
+                             + value
+    1:                       + ZeroOrMore(
+    1:                           Suppress(Literal(','))
+    1:                         + value)
+                             )
+    1:                      |  name
+    1:                     ).setParseAction(self._property)
+       
+               pattern     =(Optional(
+                               families)
+                           + Optional(
+                               Literal('-')
+                             + point_sizes)
+                           + ZeroOrMore(
+                               Literal(':')
+                             + property)
+    1:                     + StringEnd()
+                           )
+       
+    1:         self._parser = pattern
+    1:         self.ParseException = ParseException
+       
+    1:     def parse(self, pattern):
+               """
+               Parse the given fontconfig *pattern* and return a dictionary
+               of key/value pairs useful for initializing a
+               :class:`font_manager.FontProperties` object.
+               """
+    5:         props = self._properties = {}
+    5:         try:
+    5:             self._parser.parseString(pattern)
+               except self.ParseException as e:
+                   raise ValueError(
+                       "Could not parse font string: '%s'\n%s" % (pattern, e))
+       
+    5:         self._properties = None
+       
+    5:         self._parser.resetCache()
+       
+    5:         return props
+       
+    1:     def _family(self, s, loc, tokens):
+    5:         return [family_unescape(r'\1', str(tokens[0]))]
+       
+    1:     def _size(self, s, loc, tokens):
+               return [float(tokens[0])]
+       
+    1:     def _name(self, s, loc, tokens):
+    4:         return [str(tokens[0])]
+       
+    1:     def _value(self, s, loc, tokens):
+               return [value_unescape(r'\1', str(tokens[0]))]
+       
+    1:     def _families(self, s, loc, tokens):
+   15:         self._properties['family'] = [str(x) for x in tokens]
+    5:         return []
+       
+    1:     def _point_sizes(self, s, loc, tokens):
+               self._properties['size'] = [str(x) for x in tokens]
+               return []
+       
+    1:     def _property(self, s, loc, tokens):
+    2:         if len(tokens) == 1:
+    2:             if tokens[0] in self._constants:
+    2:                 key, val = self._constants[tokens[0]]
+    2:                 self._properties.setdefault(key, []).append(val)
+               else:
+                   key = tokens[0]
+                   val = tokens[1:]
+                   self._properties.setdefault(key, []).extend(val)
+    2:         return []
+       
+       
+       # `parse_fontconfig_pattern` is a bottleneck during the tests because it is
+       # repeatedly called when the rcParams are reset (to validate the default
+       # fonts).  In practice, the cache size doesn't grow beyond a few dozen entries
+       # during the test suite.
+    1: parse_fontconfig_pattern = lru_cache()(FontconfigPatternParser().parse)
+       
+       
+    1: def generate_fontconfig_pattern(d):
+           """
+           Given a dictionary of key/value pairs, generates a fontconfig
+           pattern string.
+           """
+           props = []
+           for key in 'family style variant weight stretch file size'.split():
+               val = getattr(d, 'get_' + key)()
+               if val is not None and val != []:
+                   if type(val) == list:
+                       val = [value_escape(r'\\\1', str(x)) for x in val
+                              if x is not None]
+                       if val != []:
+                           val = ','.join(val)
+                   props.append(":%s=%s" % (key, val))
+           return ''.join(props)

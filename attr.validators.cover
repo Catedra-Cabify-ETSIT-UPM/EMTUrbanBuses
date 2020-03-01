@@ -1,0 +1,282 @@
+       """
+       Commonly useful validators.
+    1: """
+       
+    1: from __future__ import absolute_import, division, print_function
+       
+    1: from ._make import _AndValidator, and_, attrib, attrs
+       
+       
+    1: __all__ = ["and_", "in_", "instance_of", "optional", "provides"]
+       
+       
+    2: @attrs(repr=False, slots=True, hash=True)
+    1: class _InstanceOfValidator(object):
+    1:     type = attrib()
+       
+    1:     def __call__(self, inst, attr, value):
+               """
+               We use a callable class to be able to change the ``__repr__``.
+               """
+               if not isinstance(value, self.type):
+                   raise TypeError(
+                       "'{name}' must be {type!r} (got {value!r} that is a "
+                       "{actual!r}).".format(
+                           name=attr.name,
+                           type=self.type,
+                           actual=value.__class__,
+                           value=value,
+                       ),
+                       attr,
+                       self.type,
+                       value,
+                   )
+       
+    1:     def __repr__(self):
+    4:         return "<instance_of validator for type {type!r}>".format(
+    4:             type=self.type
+               )
+       
+       
+    1: def instance_of(type):
+           """
+           A validator that raises a :exc:`TypeError` if the initializer is called
+           with a wrong type for this particular attribute (checks are performed using
+           :func:`isinstance` therefore it's also valid to pass a tuple of types).
+       
+           :param type: The type to check for.
+           :type type: type or tuple of types
+       
+           :raises TypeError: With a human readable error message, the attribute
+               (of type :class:`attr.Attribute`), the expected type, and the value it
+               got.
+           """
+    2:     return _InstanceOfValidator(type)
+       
+       
+    2: @attrs(repr=False, slots=True, hash=True)
+    1: class _ProvidesValidator(object):
+    1:     interface = attrib()
+       
+    1:     def __call__(self, inst, attr, value):
+               """
+               We use a callable class to be able to change the ``__repr__``.
+               """
+               if not self.interface.providedBy(value):
+                   raise TypeError(
+                       "'{name}' must provide {interface!r} which {value!r} "
+                       "doesn't.".format(
+                           name=attr.name, interface=self.interface, value=value
+                       ),
+                       attr,
+                       self.interface,
+                       value,
+                   )
+       
+    1:     def __repr__(self):
+               return "<provides validator for interface {interface!r}>".format(
+                   interface=self.interface
+               )
+       
+       
+    1: def provides(interface):
+           """
+           A validator that raises a :exc:`TypeError` if the initializer is called
+           with an object that does not provide the requested *interface* (checks are
+           performed using ``interface.providedBy(value)`` (see `zope.interface
+           <https://zopeinterface.readthedocs.io/en/latest/>`_).
+       
+           :param zope.interface.Interface interface: The interface to check for.
+       
+           :raises TypeError: With a human readable error message, the attribute
+               (of type :class:`attr.Attribute`), the expected interface, and the
+               value it got.
+           """
+           return _ProvidesValidator(interface)
+       
+       
+    2: @attrs(repr=False, slots=True, hash=True)
+    1: class _OptionalValidator(object):
+    1:     validator = attrib()
+       
+    1:     def __call__(self, inst, attr, value):
+               if value is None:
+                   return
+       
+               self.validator(inst, attr, value)
+       
+    1:     def __repr__(self):
+    6:         return "<optional validator for {what} or None>".format(
+    6:             what=repr(self.validator)
+               )
+       
+       
+    1: def optional(validator):
+           """
+           A validator that makes an attribute optional.  An optional attribute is one
+           which can be set to ``None`` in addition to satisfying the requirements of
+           the sub-validator.
+       
+           :param validator: A validator (or a list of validators) that is used for
+               non-``None`` values.
+           :type validator: callable or :class:`list` of callables.
+       
+           .. versionadded:: 15.1.0
+           .. versionchanged:: 17.1.0 *validator* can be a list of validators.
+           """
+    2:     if isinstance(validator, list):
+               return _OptionalValidator(_AndValidator(validator))
+    2:     return _OptionalValidator(validator)
+       
+       
+    2: @attrs(repr=False, slots=True, hash=True)
+    1: class _InValidator(object):
+    1:     options = attrib()
+       
+    1:     def __call__(self, inst, attr, value):
+               try:
+                   in_options = value in self.options
+               except TypeError:  # e.g. `1 in "abc"`
+                   in_options = False
+       
+               if not in_options:
+                   raise ValueError(
+                       "'{name}' must be in {options!r} (got {value!r})".format(
+                           name=attr.name, options=self.options, value=value
+                       )
+                   )
+       
+    1:     def __repr__(self):
+               return "<in_ validator with options {options!r}>".format(
+                   options=self.options
+               )
+       
+       
+    1: def in_(options):
+           """
+           A validator that raises a :exc:`ValueError` if the initializer is called
+           with a value that does not belong in the options provided.  The check is
+           performed using ``value in options``.
+       
+           :param options: Allowed options.
+           :type options: list, tuple, :class:`enum.Enum`, ...
+       
+           :raises ValueError: With a human readable error message, the attribute (of
+              type :class:`attr.Attribute`), the expected options, and the value it
+              got.
+       
+           .. versionadded:: 17.1.0
+           """
+           return _InValidator(options)
+       
+       
+    2: @attrs(repr=False, slots=False, hash=True)
+    1: class _IsCallableValidator(object):
+    1:     def __call__(self, inst, attr, value):
+               """
+               We use a callable class to be able to change the ``__repr__``.
+               """
+               if not callable(value):
+                   raise TypeError("'{name}' must be callable".format(name=attr.name))
+       
+    1:     def __repr__(self):
+   15:         return "<is_callable validator>"
+       
+       
+    1: def is_callable():
+           """
+           A validator that raises a :class:`TypeError` if the initializer is called
+           with a value for this particular attribute that is not callable.
+       
+           .. versionadded:: 19.1.0
+       
+           :raises TypeError: With a human readable error message containing the
+               attribute (of type :class:`attr.Attribute`) name.
+           """
+    5:     return _IsCallableValidator()
+       
+       
+    2: @attrs(repr=False, slots=True, hash=True)
+    1: class _DeepIterable(object):
+    1:     member_validator = attrib(validator=is_callable())
+    1:     iterable_validator = attrib(
+    1:         default=None, validator=optional(is_callable())
+           )
+       
+    1:     def __call__(self, inst, attr, value):
+               """
+               We use a callable class to be able to change the ``__repr__``.
+               """
+               if self.iterable_validator is not None:
+                   self.iterable_validator(inst, attr, value)
+       
+               for member in value:
+                   self.member_validator(inst, attr, member)
+       
+    1:     def __repr__(self):
+               iterable_identifier = (
+                   ""
+                   if self.iterable_validator is None
+                   else " {iterable!r}".format(iterable=self.iterable_validator)
+               )
+               return (
+                   "<deep_iterable validator for{iterable_identifier}"
+                   " iterables of {member!r}>"
+               ).format(
+                   iterable_identifier=iterable_identifier,
+                   member=self.member_validator,
+               )
+       
+       
+    1: def deep_iterable(member_validator, iterable_validator=None):
+           """
+           A validator that performs deep validation of an iterable.
+       
+           :param member_validator: Validator to apply to iterable members
+           :param iterable_validator: Validator to apply to iterable itself
+               (optional)
+       
+           .. versionadded:: 19.1.0
+       
+           :raises TypeError: if any sub-validators fail
+           """
+           return _DeepIterable(member_validator, iterable_validator)
+       
+       
+    2: @attrs(repr=False, slots=True, hash=True)
+    1: class _DeepMapping(object):
+    1:     key_validator = attrib(validator=is_callable())
+    1:     value_validator = attrib(validator=is_callable())
+    1:     mapping_validator = attrib(default=None, validator=optional(is_callable()))
+       
+    1:     def __call__(self, inst, attr, value):
+               """
+               We use a callable class to be able to change the ``__repr__``.
+               """
+               if self.mapping_validator is not None:
+                   self.mapping_validator(inst, attr, value)
+       
+               for key in value:
+                   self.key_validator(inst, attr, key)
+                   self.value_validator(inst, attr, value[key])
+       
+    1:     def __repr__(self):
+               return (
+                   "<deep_mapping validator for objects mapping {key!r} to {value!r}>"
+               ).format(key=self.key_validator, value=self.value_validator)
+       
+       
+    1: def deep_mapping(key_validator, value_validator, mapping_validator=None):
+           """
+           A validator that performs deep validation of a dictionary.
+       
+           :param key_validator: Validator to apply to dictionary keys
+           :param value_validator: Validator to apply to dictionary values
+           :param mapping_validator: Validator to apply to top-level mapping
+               attribute (optional)
+       
+           .. versionadded:: 19.1.0
+       
+           :raises TypeError: if any sub-validators fail
+           """
+           return _DeepMapping(key_validator, value_validator, mapping_validator)

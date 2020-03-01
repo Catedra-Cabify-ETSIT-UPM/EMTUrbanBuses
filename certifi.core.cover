@@ -1,0 +1,15 @@
+       # -*- coding: utf-8 -*-
+       
+       """
+       certifi.py
+       ~~~~~~~~~~
+       
+       This module returns the installation location of cacert.pem.
+    1: """
+    1: import os
+       
+       
+    1: def where():
+    1:     f = os.path.dirname(__file__)
+       
+    1:     return os.path.join(f, 'cacert.pem')

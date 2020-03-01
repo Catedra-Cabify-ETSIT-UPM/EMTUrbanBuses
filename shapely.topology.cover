@@ -1,0 +1,78 @@
+       """
+       Intermediaries supporting GEOS topological operations
+       
+       These methods all take Shapely geometries and other Python objects and delegate
+       to GEOS functions via ctypes.
+       
+       These methods return ctypes objects that should be recast by the caller.
+    1: """
+       
+    1: from ctypes import byref, c_double
+    1: from shapely.geos import TopologicalError, lgeos
+       
+       
+    2: class Validating(object):
+       
+    1:     def _validate(self, ob, stop_prepared=False):
+               if ob is None or ob._geom is None:
+                   raise ValueError("Null geometry supports no operations")
+               if stop_prepared and hasattr(ob, 'prepared'):
+                   raise ValueError("Prepared geometries cannot be operated on")
+       
+       
+    2: class Delegating(Validating):
+       
+    1:     def __init__(self, name):
+   50:         self.fn = lgeos.methods[name]
+       
+    1:     def _check_topology(self, err, *geoms):
+               """Raise TopologicalError if geoms are invalid.
+       
+               Else, raise original error.
+               """
+               for geom in geoms:
+                   if not geom.is_valid:
+                       raise TopologicalError(
+                           "The operation '%s' could not be performed. "
+                           "Likely cause is invalidity of the geometry %s" % (
+                               self.fn.__name__, repr(geom)))
+               raise err
+       
+       
+    2: class BinaryRealProperty(Delegating):
+       
+    1:     def __call__(self, this, other):
+               self._validate(this)
+               self._validate(other, stop_prepared=True)
+               d = c_double()
+               retval = self.fn(this._geom, other._geom, byref(d))
+               return d.value
+       
+       
+    2: class UnaryRealProperty(Delegating):
+       
+    1:     def __call__(self, this):
+               self._validate(this)
+               d = c_double()
+               retval = self.fn(this._geom, byref(d))
+               return d.value
+       
+       
+    2: class BinaryTopologicalOp(Delegating):
+       
+    1:     def __call__(self, this, other, *args):
+               self._validate(this)
+               self._validate(other, stop_prepared=True)
+               product = self.fn(this._geom, other._geom, *args)
+               if product is None:
+                   err = TopologicalError(
+                           "This operation could not be performed. Reason: unknown")
+                   self._check_topology(err, this, other)
+               return product
+       
+       
+    2: class UnaryTopologicalOp(Delegating):
+       
+    1:     def __call__(self, this, *args):
+               self._validate(this)
+               return self.fn(this._geom, *args)

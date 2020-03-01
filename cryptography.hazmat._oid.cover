@@ -1,0 +1,67 @@
+       # This file is dual licensed under the terms of the Apache License, Version
+       # 2.0, and the BSD License. See the LICENSE file in the root of this repository
+       # for complete details.
+       
+    1: from __future__ import absolute_import, division, print_function
+       
+    1: from cryptography import utils
+       
+       
+    2: class ObjectIdentifier(object):
+    1:     def __init__(self, dotted_string):
+  115:         self._dotted_string = dotted_string
+       
+  115:         nodes = self._dotted_string.split(".")
+  115:         intnodes = []
+       
+               # There must be at least 2 nodes, the first node must be 0..2, and
+               # if less than 2, the second node cannot have a value outside the
+               # range 0..39.  All nodes must be integers.
+  827:         for node in nodes:
+  712:             try:
+  712:                 intnodes.append(int(node, 0))
+                   except ValueError:
+                       raise ValueError(
+                           "Malformed OID: %s (non-integer nodes)" % (
+                               self._dotted_string))
+       
+  115:         if len(nodes) < 2:
+                   raise ValueError(
+                       "Malformed OID: %s (insufficient number of nodes)" % (
+                           self._dotted_string))
+       
+  115:         if intnodes[0] > 2:
+                   raise ValueError(
+                       "Malformed OID: %s (first node outside valid range)" % (
+                           self._dotted_string))
+       
+  115:         if intnodes[0] < 2 and intnodes[1] >= 40:
+                   raise ValueError(
+                       "Malformed OID: %s (second node outside valid range)" % (
+                           self._dotted_string))
+       
+    1:     def __eq__(self, other):
+   28:         if not isinstance(other, ObjectIdentifier):
+                   return NotImplemented
+       
+   28:         return self.dotted_string == other.dotted_string
+       
+    1:     def __ne__(self, other):
+               return not self == other
+       
+    1:     def __repr__(self):
+               return "<ObjectIdentifier(oid={}, name={})>".format(
+                   self.dotted_string,
+                   self._name
+               )
+       
+    1:     def __hash__(self):
+  206:         return hash(self.dotted_string)
+       
+    1:     @property
+           def _name(self):
+               # Lazy import to avoid an import cycle
+               from cryptography.x509.oid import _OID_NAMES
+               return _OID_NAMES.get(self, "Unknown OID")
+       
+    1:     dotted_string = utils.read_only_property("_dotted_string")

@@ -1,0 +1,33 @@
+    1: """Shapely errors."""
+       
+       
+    2: class ShapelyError(Exception):
+    1:     """Base error class."""
+       
+       
+    2: class UnsupportedGEOSVersionError(ShapelyError):
+    1:     """Raised when the system's GEOS library version is unsupported."""
+       
+       
+    2: class ReadingError(ShapelyError):
+    1:     """A WKT or WKB reading error."""
+       
+       
+    2: class WKBReadingError(ReadingError):
+    1:     """A WKB reading error."""
+       
+       
+    2: class WKTReadingError(ReadingError):
+    1:     """A WKT reading error."""
+       
+       
+    2: class DimensionError(ShapelyError):
+    1:     """An error in the number of coordinate dimensions."""
+       
+       
+    2: class TopologicalError(ShapelyError):
+    1:     """A geometry is invalid or topologically incorrect."""
+       
+       
+    2: class PredicateError(ShapelyError):
+    1:     """A geometric predicate has failed to return True/False."""

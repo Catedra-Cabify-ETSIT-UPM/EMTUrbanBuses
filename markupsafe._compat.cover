@@ -1,0 +1,33 @@
+       # -*- coding: utf-8 -*-
+       """
+       markupsafe._compat
+       ~~~~~~~~~~~~~~~~~~
+       
+       :copyright: 2010 Pallets
+       :license: BSD-3-Clause
+    1: """
+    1: import sys
+       
+    1: PY2 = sys.version_info[0] == 2
+       
+    1: if not PY2:
+    1:     text_type = str
+    1:     string_types = (str,)
+    1:     unichr = chr
+    1:     int_types = (int,)
+       
+    1:     def iteritems(x):
+               return iter(x.items())
+       
+    1:     from collections.abc import Mapping
+       
+       else:
+           text_type = unicode
+           string_types = (str, unicode)
+           unichr = unichr
+           int_types = (int, long)
+       
+           def iteritems(x):
+               return x.iteritems()
+       
+           from collections import Mapping

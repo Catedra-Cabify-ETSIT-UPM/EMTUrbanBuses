@@ -1,0 +1,86 @@
+       # -*- coding: utf-8 -*-
+       """
+           pygments.styles
+           ~~~~~~~~~~~~~~~
+       
+           Contains built-in styles.
+       
+           :copyright: Copyright 2006-2019 by the Pygments team, see AUTHORS.
+           :license: BSD, see LICENSE for details.
+    1: """
+       
+    1: from pygments.plugin import find_plugin_styles
+    1: from pygments.util import ClassNotFound
+       
+       
+       #: Maps style names to 'submodule::classname'.
+       STYLE_MAP = {
+    1:     'default':  'default::DefaultStyle',
+    1:     'emacs':    'emacs::EmacsStyle',
+    1:     'friendly': 'friendly::FriendlyStyle',
+    1:     'colorful': 'colorful::ColorfulStyle',
+    1:     'autumn':   'autumn::AutumnStyle',
+    1:     'murphy':   'murphy::MurphyStyle',
+    1:     'manni':    'manni::ManniStyle',
+    1:     'monokai':  'monokai::MonokaiStyle',
+    1:     'perldoc':  'perldoc::PerldocStyle',
+    1:     'pastie':   'pastie::PastieStyle',
+    1:     'borland':  'borland::BorlandStyle',
+    1:     'trac':     'trac::TracStyle',
+    1:     'native':   'native::NativeStyle',
+    1:     'fruity':   'fruity::FruityStyle',
+    1:     'bw':       'bw::BlackWhiteStyle',
+    1:     'vim':      'vim::VimStyle',
+    1:     'vs':       'vs::VisualStudioStyle',
+    1:     'tango':    'tango::TangoStyle',
+    1:     'rrt':      'rrt::RrtStyle',
+    1:     'xcode':    'xcode::XcodeStyle',
+    1:     'igor':     'igor::IgorStyle',
+    1:     'paraiso-light': 'paraiso_light::ParaisoLightStyle',
+    1:     'paraiso-dark': 'paraiso_dark::ParaisoDarkStyle',
+    1:     'lovelace': 'lovelace::LovelaceStyle',
+    1:     'algol':    'algol::AlgolStyle',
+    1:     'algol_nu': 'algol_nu::Algol_NuStyle',
+    1:     'arduino':  'arduino::ArduinoStyle',
+    1:     'rainbow_dash': 'rainbow_dash::RainbowDashStyle',
+    1:     'abap':     'abap::AbapStyle',
+    1:     'solarized-dark': 'solarized::SolarizedDarkStyle',
+    1:     'solarized-light': 'solarized::SolarizedLightStyle',
+    1:     'sas':         'sas::SasStyle',
+    1:     'stata':       'stata_light::StataLightStyle',
+    1:     'stata-light': 'stata_light::StataLightStyle',
+    1:     'stata-dark':  'stata_dark::StataDarkStyle',
+       }
+       
+       
+    1: def get_style_by_name(name):
+           if name in STYLE_MAP:
+               mod, cls = STYLE_MAP[name].split('::')
+               builtin = "yes"
+           else:
+               for found_name, style in find_plugin_styles():
+                   if name == found_name:
+                       return style
+               # perhaps it got dropped into our styles package
+               builtin = ""
+               mod = name
+               cls = name.title() + "Style"
+       
+           try:
+               mod = __import__('pygments.styles.' + mod, None, None, [cls])
+           except ImportError:
+               raise ClassNotFound("Could not find style module %r" % mod +
+                                (builtin and ", though it should be builtin") + ".")
+           try:
+               return getattr(mod, cls)
+           except AttributeError:
+               raise ClassNotFound("Could not find style class %r in style module." % cls)
+       
+       
+    1: def get_all_styles():
+           """Return an generator for all styles by name,
+           both builtin and plugin."""
+           for name in STYLE_MAP:
+               yield name
+           for name, _ in find_plugin_styles():
+               yield name

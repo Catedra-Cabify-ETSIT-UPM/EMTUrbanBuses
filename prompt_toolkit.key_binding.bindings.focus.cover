@@ -1,0 +1,22 @@
+    1: from __future__ import unicode_literals
+       
+       __all__ = [
+    1:     'focus_next',
+    1:     'focus_previous',
+       ]
+       
+       
+    1: def focus_next(event):
+           """
+           Focus the next visible Window.
+           (Often bound to the `Tab` key.)
+           """
+           event.app.layout.focus_next()
+       
+       
+    1: def focus_previous(event):
+           """
+           Focus the previous visible Window.
+           (Often bound to the `BackTab` key.)
+           """
+           event.app.layout.focus_previous()

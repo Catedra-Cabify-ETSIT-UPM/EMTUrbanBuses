@@ -1,0 +1,79 @@
+       """Multi-part collections of geometries
+    1: """
+       
+    1: from ctypes import c_void_p
+       
+    1: from shapely.geos import lgeos
+    1: from shapely.geometry.base import BaseGeometry
+    1: from shapely.geometry.base import BaseMultipartGeometry
+    1: from shapely.geometry.base import HeterogeneousGeometrySequence
+    1: from shapely.geometry.base import geos_geom_from_py
+       
+       
+    2: class GeometryCollection(BaseMultipartGeometry):
+       
+           """A heterogenous collection of geometries
+       
+           Attributes
+           ----------
+           geoms : sequence
+               A sequence of Shapely geometry instances
+    1:     """
+       
+    1:     def __init__(self, geoms=None):
+               """
+               Parameters
+               ----------
+               geoms : list
+                   A list of shapely geometry instances, which may be heterogenous.
+               
+               Example
+               -------
+               Create a GeometryCollection with a Point and a LineString
+               
+                 >>> p = Point(51, -1)
+                 >>> l = LineString([(52, -1), (49, 2)])
+                 >>> gc = GeometryCollection([p, l])
+               """
+               BaseMultipartGeometry.__init__(self)
+               if not geoms:
+                   pass
+               else:
+                   self._geom, self._ndim = geos_geometrycollection_from_py(geoms)
+       
+    1:     @property
+           def __geo_interface__(self):
+               geometries = []
+               for geom in self.geoms:
+                   geometries.append(geom.__geo_interface__)
+               return dict(type='GeometryCollection', geometries=geometries)
+       
+    1:     @property
+           def geoms(self):
+               if self.is_empty:
+                   return []
+               return HeterogeneousGeometrySequence(self)
+       
+    1: def geos_geometrycollection_from_py(ob):
+           """Creates a GEOS GeometryCollection from a list of geometries"""
+           L = len(ob)
+           N = 2
+           subs = (c_void_p * L)()
+           for l in range(L):
+               assert(isinstance(ob[l], BaseGeometry))
+               if ob[l].has_z:
+                   N = 3
+               geom, n = geos_geom_from_py(ob[l])
+               subs[l] = geom
+           
+           return (lgeos.GEOSGeom_createCollection(7, subs, L), N)
+       
+       # Test runner
+    1: def _test():
+           import doctest
+           doctest.testmod()
+       
+       
+    1: if __name__ == "__main__":
+           _test()
+       

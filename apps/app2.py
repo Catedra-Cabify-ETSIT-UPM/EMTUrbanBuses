@@ -29,13 +29,14 @@ route_lines = gpd.read_file('M6Data/route_lines.json')
 with open('M6Data/line_stops_dict.json', 'r') as f:
     line_stops_dict = json.load(f)
 
+#Token for the mapbox api
+mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
+style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
+style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
     
 #Load the buses dataframe and parse the dates
-buses_data = pd.read_csv('../../flash/EMTBuses/buses_data.csv')
+buses_data = pd.read_csv('../../flash/EMTBuses/buses_data.csv',dtype={'line': 'str','destination': 'str','stop': 'int32','bus': 'int32','real_coords': 'int32','pos_in_burst':'int32','deviation': 'int32','estimateArrive': 'int32','DistanceBus': 'int32','request_time': 'int32','lat':'float','lon':'float'})
 buses_data['datetime'] = pd.to_datetime(buses_data['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
-int_columns = ['stop','bus','real_coords','pos_in_burst','deviation','estimateArrive','DistanceBus','request_time']
-for column in int_columns :
-    buses_data[column] = pd.to_numeric(buses_data[column])
 
 #Values for components
 start_date = buses_data.iloc[0]['datetime']
@@ -60,10 +61,10 @@ layout = html.Div(className = '', children = [
             min=0,
             max=minutes_range,
             step=1,
-            value=[minutes_range-120, minutes_range]
+            value=[minutes_range-30, minutes_range]
         ),
         html.Div(className='columns',children = [
-            html.Div(className='column is-one-third',children = [
+            html.Div(className='column',children = [
                 html.Span('Select lines: ', className = 'tag is-light is-medium'),
                 dcc.Dropdown(
                     id="lines-select",
@@ -151,10 +152,95 @@ layout = html.Div(className = '', children = [
             ]) 
         ]),
         html.Div(className='box',id='selected-data'),
-        html.Div(className='box',id='figs-selected-data')
+        html.Div(className='box',id='figs-selected-data'),
+        html.Div(className='box', children = [
+            html.Div(className='box',id='time-reduced-pos-control', children = [
+                html.H2(
+                    'Percentage of interval slider',
+                    className = 'subtitle is-5'
+                ),
+                dcc.Slider(
+                    id = 'time-reduced-slider',
+                    min=0,
+                    max=100,
+                    marks={i*5: '{}%'.format(i*5) for i in range(21) },
+                    step=1,
+                    value=0
+                )
+            ]),
+            html.Div(className='box',id='figs-buses-trayectory')
+        ])
     ])
     
 ])
+
+# FUNCTIONS 
+def point_by_distance_on_line (line, destination, distance, stop_id) :
+    """
+    Returns the coordinates of the bus location
+
+        Parameters
+        ----------
+        line : string
+            The line that the bus belongs to
+        destination : float
+            The destination of the bus
+        distance : float
+            The distance of the bus to the stop in kilometers
+        stop_id : string
+            The id of the bus stop
+    """
+    
+    #We get the selected lines from the dataframe
+    lines_selected = route_lines.loc[route_lines['line_id'].isin(['1','82','91','92','99','132','502','506'])]
+    
+    #Get the line rows
+    if line == '1' :
+        line1 = lines_selected.loc[(route_lines['line_id']=='1')&(route_lines['direction']=='1')]
+        line2 = lines_selected.loc[(route_lines['line_id']=='1')&(route_lines['direction']=='2')]
+    elif line == '82' :
+        line1 = lines_selected.loc[(route_lines['line_id']=='82')&(route_lines['direction']=='1')]
+        line2 = lines_selected.loc[(route_lines['line_id']=='82')&(route_lines['direction']=='2')]
+    elif line == 'F' :
+        line1 = lines_selected.loc[(route_lines['line_id']=='91')&(route_lines['direction']=='1')]
+        line2 = lines_selected.loc[(route_lines['line_id']=='91')&(route_lines['direction']=='2')]
+    elif line == 'G' :     
+        line1 = lines_selected.loc[(route_lines['line_id']=='92')&(route_lines['direction']=='1')]
+        line2 = lines_selected.loc[(route_lines['line_id']=='92')&(route_lines['direction']=='2')]
+    elif line == 'U' :
+        line1 = lines_selected.loc[(route_lines['line_id']=='99')&(route_lines['direction']=='1')]
+        line2 = lines_selected.loc[(route_lines['line_id']=='99')&(route_lines['direction']=='2')]
+    elif line == '132' :    
+        line1 = lines_selected.loc[(route_lines['line_id']=='132')&(route_lines['direction']=='1')]
+        line2 = lines_selected.loc[(route_lines['line_id']=='132')&(route_lines['direction']=='2')]
+    elif line == 'N2' :   
+        line1 = lines_selected.loc[(route_lines['line_id']=='502')&(route_lines['direction']=='1')]
+        line2 = lines_selected.loc[(route_lines['line_id']=='502')&(route_lines['direction']=='2')]
+    elif line == 'N6' :    
+        line1 = lines_selected.loc[(route_lines['line_id']=='506')&(route_lines['direction']=='1')]
+        line2 = lines_selected.loc[(route_lines['line_id']=='506')&(route_lines['direction']=='2')]
+    
+    dests_1 = ['HOSPITAL LA PAZ','CIUDAD UNIVERSITARIA','PARANINFO','PITIS','PROSPERIDAD','VALDEBEBAS','LAS ROSAS']
+    if destination in dests_1 :
+        line = line1['geometry']
+        line_length = line1['dist']
+    else :
+        line = line2['geometry']
+        line_length = line2['dist']
+    #We get the stop coords
+    origin_point = stops.loc[stops['stop_code'] == stop_id].iloc[0]['geometry']
+    
+    #First we calculate the normalized distance of the bus from the start of the line
+    #by substracting the distance of the bus to the stop to the distance of the stop to the start of the line
+    #which is returned by the project method of the shapely module
+    normalized_distance = line.project(origin_point,normalized=True) - distance/line_length
+    
+    #Then we get the the coordinates of the point that is at the normalized distance obtained 
+    #before from the start of the line with the interpolate method
+    interpolated_point = line.interpolate(normalized_distance,normalized=True)
+    
+    #And we return the coordinates of the point
+    return interpolated_point.x,interpolated_point.y
 
 # CALLBACKS
 
@@ -163,18 +249,18 @@ layout = html.Div(className = '', children = [
         Output(component_id = 'selected-data',component_property = 'children')
     ],
     [
-        Input('time-range-slider', 'value'),
-        Input('lines-select', 'value'),
-        Input('stops-select', 'value'),
-        Input('buses-select', 'value'),
-        Input('distance-range-radio', 'value'),
-        Input('distance-range-slider', 'value'),
-        Input('eta-range-radio', 'value'),
-        Input('eta-range-slider', 'value')
+        Input(component_id = 'time-range-slider',component_property = 'value'),
+        Input(component_id = 'lines-select',component_property = 'value'),
+        Input(component_id = 'stops-select',component_property = 'value'),
+        Input(component_id = 'buses-select',component_property = 'value'),
+        Input(component_id = 'distance-range-radio',component_property = 'value'),
+        Input(component_id = 'distance-range-slider',component_property = 'value'),
+        Input(component_id = 'eta-range-radio',component_property = 'value'),
+        Input(component_id = 'eta-range-slider',component_property = 'value')
     ])
 
-def update_graph_live(time_range,lines_selected,stops_selected,buses_selected,distance_radio,distance_range,eta_radio,eta_range):
-            
+def update_table(time_range,lines_selected,stops_selected,buses_selected,distance_radio,distance_range,eta_radio,eta_range):
+        
         try :
             showAllLines = False
             showAllStops = False
@@ -248,56 +334,52 @@ def update_graph_live(time_range,lines_selected,stops_selected,buses_selected,di
                     
             #If no rows suit in the selection
             if (buses_data_reduced.shape[0] == 0) | (buses_data_reduced.shape[0] == 0) :
-                return [
-                    'No rows found for the selection'
-                ]
+                return ['No rows found for the selection']
             
             #And finally we return the graph element
             return [
                 html.Div(className='',children=[
-                    html.Div(className='',children=[
-                        html.H2(
-                            'Showing data from: {} to: {}'.format(start_interval.strftime("%d-%m-%Y (%H:%M)"),end_interval.strftime("%d-%m-%Y (%H:%M)")),
-                            className = 'subtitle is-4'
-                        ),
-                        dash_table.DataTable(
-                            id='table',
-                            columns=[{"name": i, "id": i} for i in buses_data_reduced.columns],
-                            data=buses_data_reduced.to_dict('records'),
-                            page_size= 15,
-                            style_table={'overflowX': 'scroll'},
-                            style_cell={
-                                'minWidth': '0px', 'maxWidth': '180px',
-                                'overflow': 'hidden',
-                                'textOverflow': 'ellipsis',
-                            },
-                            editable=True,
-                            filter_action="native",
-                            sort_action="native",
-                            sort_mode="multi",
-                            row_deletable=True
-                        )
-                    ])
+                    html.H2(
+                        'Showing data from: {} to: {}'.format(start_interval.strftime("%d-%m-%Y (%H:%M)"),end_interval.strftime("%d-%m-%Y (%H:%M)")),
+                        className = 'subtitle is-4'
+                    ),
+                    dash_table.DataTable(
+                        id='table',
+                        columns=[{"name": i, "id": i} for i in buses_data_reduced.columns],
+                        data=buses_data_reduced.to_dict('records'),
+                        page_size= 15,
+                        style_table={'overflowX': 'scroll'},
+                        style_cell={
+                            'minWidth': '0px', 'maxWidth': '180px',
+                            'overflow': 'hidden',
+                            'textOverflow': 'ellipsis',
+                        },
+                        editable=True,
+                        filter_action="native",
+                        sort_action="native",
+                        sort_mode="multi",
+                        row_deletable=True
+                    )
                 ])
             ]
         except :
-            return [
-                'No rows found for the selection'
-            ]
+            return ['No rows found for the selection']
         
-
-
 # CALLBACK 2 - Representations of selected data
 @app.callback(
-        Output('figs-selected-data', "children"),
+        Output(component_id = 'figs-selected-data', component_property = 'children'),
     [
-        Input('table', "derived_virtual_data")
+        Input(component_id = 'table', component_property = 'derived_virtual_data')
     ])
 def update_graphs(rows):
-
+    
+    if rows == None :
+        return 'Selected data is too large to represent. Select a smaller slice'
+    
     if len(rows) < 500 :
         buses_data_reduced = pd.DataFrame(rows)
         buses_data_reduced['datetime'] = pd.to_datetime(buses_data_reduced['datetime'], format='%Y-%m-%dT%H:%M:%S.%f')
+        buses_data_reduced['line'] = buses_data_reduced['line'].astype(str)
         
         #ETAs Figures
         first_stop = buses_data_reduced['stop'].unique().tolist()[0]
@@ -353,6 +435,147 @@ def update_graphs(rows):
             dcc.Graph(
                 id='fig3',
                 figure=fig3
+            )
+        ]
+    else :
+        return 'Selected data is too large to represent. Select a smaller slice'
+
+# CALLBACK 3 - BUSES TRAYECTORY OVER TIME
+@app.callback(
+        Output(component_id = 'figs-buses-trayectory', component_property = 'children'),
+    [
+        Input(component_id = 'table', component_property = 'derived_virtual_data'),
+        Input(component_id = 'time-range-slider', component_property = 'value'),
+        Input(component_id = 'time-reduced-slider', component_property = 'value')
+    ])
+def update_positions(rows,time_range,time_value):
+    
+    if rows == None :
+        return 'Selected data is too large to represent. Select a smaller slice'
+    
+    if len(rows) < 200 :
+        minutes = time_range[0] + time_value*(time_range[1]-time_range[0])/100
+        time_threshold = start_date + timedelta(minutes=minutes)
+        
+        buses_data_reduced = pd.DataFrame(rows)
+        buses_data_reduced['datetime'] = pd.to_datetime(buses_data_reduced['datetime'], format='%Y-%m-%dT%H:%M:%S.%f')
+        #Get the rows that are inside the time interval
+        mask = (buses_data_reduced['datetime'] < time_threshold)
+        buses_data_reduced = buses_data_reduced.loc[mask]
+        buses_in_df = buses_data_reduced['bus'].unique().tolist()
+        center_x = buses_data_reduced['lon'].mean()
+        center_y = buses_data_reduced['lat'].mean()
+        
+        #We create the figure object
+        fig_buses_trayectory = go.Figure()
+        
+        for bus in buses_in_df :
+            bus_df = buses_data_reduced.loc[buses_data_reduced['bus']==bus]
+            bus_bools = bus_df['real_coords'].tolist()
+            bus_lats = bus_df['lat'].tolist()
+            bus_lons = bus_df['lon'].tolist()
+            line = bus_df.iloc[0]['line']
+            destination = bus_df.iloc[0]['destination']
+            #We construct real and calculated coord lists
+            lats_real = []
+            lons_real = []
+            lats_calc = [] 
+            lons_calc = []
+            
+            last_real_lat,last_real_lon = None,None
+            last_calc_lat,last_calc_lon = None,None
+            for i in range(len(bus_bools)) :
+                if bus_bools[i] == 1 :
+                    lats_real.append(bus_lats[i])
+                    lons_real.append(bus_lons[i])
+                    last_real_lat = bus_lats[i]
+                    last_real_lon = bus_lons[i]
+            for index,row in bus_df.iterrows() :
+                if row['estimateArrive'] < 10000 : 
+                    calc_point = Point(point_by_distance_on_line(row['line'], row['destination'], row['DistanceBus']/1000, row['stop']))
+                    lats_calc.append(calc_point.y)
+                    lons_calc.append(calc_point.x)
+                    last_calc_lat = calc_point.y
+                    last_calc_lon = calc_point.x
+            
+            #Trace for real coords
+            fig_buses_trayectory.add_trace(go.Scattermapbox(
+                lat=lats_real,
+                lon=lons_real,
+                mode='lines',
+                line=dict(width=2),
+                name='{}-{}-{}'.format(line,bus,destination),
+                text='{}-{}-{}'.format(line,bus,destination),
+                hoverinfo='text'
+            ))
+            #Bus point for calc coords
+            if not last_real_lat == None :
+                fig_buses_trayectory.add_trace(go.Scattermapbox(
+                    lat=[last_real_lat],
+                    lon=[last_real_lon],
+                    mode='markers',
+                    marker=go.scattermapbox.Marker(
+                        size=7,
+                        color='#A9A9A9',
+                        opacity=1
+                    ),
+                    name='{}-{}-{}'.format(line,bus,destination),
+                    text='{}-{}-{}'.format(line,bus,destination),
+                    hoverinfo='text'
+                ))
+            #Trace for calc coords
+            fig_buses_trayectory.add_trace(go.Scattermapbox(
+                lat=lats_calc,
+                lon=lons_calc,
+                mode='lines',
+                line=dict(width=2),
+                name='{}-{}-{}'.format(line,bus,destination),
+                text='{}-{}-{}'.format(line,bus,destination),
+                hoverinfo='text'
+            ))
+            #Bus point for calc coords
+            if not last_calc_lat == None :
+                fig_buses_trayectory.add_trace(go.Scattermapbox(
+                    lat=[last_calc_lat],
+                    lon=[last_calc_lon],
+                    mode='markers',
+                    marker=go.scattermapbox.Marker(
+                        size=7,
+                        color='black',
+                        opacity=1
+                    ),
+                    name='{}-{}-{}'.format(line,bus,destination),
+                    text='{}-{}-{}'.format(line,bus,destination),
+                    hoverinfo='text'
+                ))
+        #Set figure layout
+        fig_buses_trayectory.update_layout(
+            title='Trayectory of buses until selected time',
+            height=500,
+            margin=dict(r=0, l=0, t=0, b=0),
+            hovermode='closest',
+            showlegend=True,
+            mapbox=dict(
+                accesstoken=mapbox_access_token,
+                bearing=0,
+                center=dict(
+                    lat=center_y,
+                    lon=center_x
+                ),
+                pitch=0,
+                zoom=12,
+                style=style_day
+            )
+        )
+            
+        return [
+            html.H2(
+                'Trayectory of buses until selected time',
+                className = 'subtitle is-4'
+            ),
+            dcc.Graph(
+                id='fig-buses-trayectory',
+                figure=fig_buses_trayectory
             )
         ]
     else :

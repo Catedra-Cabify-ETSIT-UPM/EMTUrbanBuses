@@ -1,0 +1,34 @@
+       # Copyright (c) Jupyter Development Team.
+       # Distributed under the terms of the Modified BSD License.
+       
+    1: """Contains the DOMWidget class"""
+       
+    1: from traitlets import Unicode
+    1: from .widget import Widget, widget_serialization, register
+    1: from .trait_types import InstanceDict
+    1: from .widget_style import Style
+    1: from .widget_core import CoreWidget
+    1: from .domwidget import DOMWidget
+       
+    2: @register
+    1: class DescriptionStyle(Style, CoreWidget, Widget):
+    1:     """Description style widget."""
+    1:     _model_name = Unicode('DescriptionStyleModel').tag(sync=True)
+    1:     description_width = Unicode(help="Width of the description to the side of the control.").tag(sync=True)
+       
+       
+    2: class DescriptionWidget(DOMWidget, CoreWidget):
+    1:     """Widget that has a description label to the side."""
+    1:     _model_name = Unicode('DescriptionModel').tag(sync=True)
+    1:     description = Unicode('', help="Description of the control.").tag(sync=True)
+    1:     description_tooltip = Unicode(None, allow_none=True, help="Tooltip for the description (defaults to description).").tag(sync=True)
+    1:     style = InstanceDict(DescriptionStyle, help="Styling customizations").tag(sync=True, **widget_serialization)
+       
+    1:     def _repr_keys(self):
+               for key in super(DescriptionWidget, self)._repr_keys():
+                   # Exclude style if it had the default value
+                   if key == 'style':
+                       value = getattr(self, key)
+                       if repr(value) == '%s()' % value.__class__.__name__:
+                           continue
+                   yield key

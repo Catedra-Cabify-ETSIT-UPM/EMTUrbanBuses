@@ -1,0 +1,116 @@
+    1: from jedi._compatibility import Parameter
+    1: from jedi.cache import memoize_method
+       
+       
+    2: class _SignatureMixin(object):
+    1:     def to_string(self):
+               def param_strings():
+                   is_positional = False
+                   is_kw_only = False
+                   for n in self.get_param_names(resolve_stars=True):
+                       kind = n.get_kind()
+                       is_positional |= kind == Parameter.POSITIONAL_ONLY
+                       if is_positional and kind != Parameter.POSITIONAL_ONLY:
+                           yield '/'
+                           is_positional = False
+       
+                       if kind == Parameter.VAR_POSITIONAL:
+                           is_kw_only = True
+                       elif kind == Parameter.KEYWORD_ONLY and not is_kw_only:
+                           yield '*'
+                           is_kw_only = True
+       
+                       yield n.to_string()
+       
+                   if is_positional:
+                       yield '/'
+       
+               s = self.name.string_name + '(' + ', '.join(param_strings()) + ')'
+               annotation = self.annotation_string
+               if annotation:
+                   s += ' -> ' + annotation
+               return s
+       
+       
+    2: class AbstractSignature(_SignatureMixin):
+    1:     def __init__(self, context, is_bound=False):
+               self.context = context
+               self.is_bound = is_bound
+       
+    1:     @property
+           def name(self):
+               return self.context.name
+       
+    1:     @property
+           def annotation_string(self):
+               return ''
+       
+    1:     def get_param_names(self, resolve_stars=False):
+               param_names = self._function_context.get_param_names()
+               if self.is_bound:
+                   return param_names[1:]
+               return param_names
+       
+    1:     def bind(self, context):
+               raise NotImplementedError
+       
+    1:     def __repr__(self):
+               return '<%s: %s, %s>' % (self.__class__.__name__, self.context, self._function_context)
+       
+       
+    2: class TreeSignature(AbstractSignature):
+    1:     def __init__(self, context, function_context=None, is_bound=False):
+               super(TreeSignature, self).__init__(context, is_bound)
+               self._function_context = function_context or context
+       
+    1:     def bind(self, context):
+               return TreeSignature(context, self._function_context, is_bound=True)
+       
+    1:     @property
+           def _annotation(self):
+               # Classes don't need annotations, even if __init__ has one. They always
+               # return themselves.
+               if self.context.is_class():
+                   return None
+               return self._function_context.tree_node.annotation
+       
+    1:     @property
+           def annotation_string(self):
+               a = self._annotation
+               if a is None:
+                   return ''
+               return a.get_code(include_prefix=False)
+       
+    1:     @memoize_method
+    1:     def get_param_names(self, resolve_stars=False):
+               params = super(TreeSignature, self).get_param_names(resolve_stars=False)
+               if resolve_stars:
+                   from jedi.evaluate.star_args import process_params
+                   params = process_params(params)
+               return params
+       
+       
+    2: class BuiltinSignature(AbstractSignature):
+    1:     def __init__(self, context, return_string, is_bound=False):
+               super(BuiltinSignature, self).__init__(context, is_bound)
+               self._return_string = return_string
+       
+    1:     @property
+           def annotation_string(self):
+               return self._return_string
+       
+    1:     @property
+           def _function_context(self):
+               return self.context
+       
+    1:     def bind(self, context):
+               assert not self.is_bound
+               return BuiltinSignature(context, self._return_string, is_bound=True)
+       
+       
+    2: class SignatureWrapper(_SignatureMixin):
+    1:     def __init__(self, wrapped_signature):
+               self._wrapped_signature = wrapped_signature
+       
+    1:     def __getattr__(self, name):
+               return getattr(self._wrapped_signature, name)

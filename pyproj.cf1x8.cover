@@ -1,0 +1,102 @@
+       """
+       This module contains mappings necessary to convert from
+       a CRS to a CF-1.8 compliant projection.
+       
+       http://cfconventions.org/cf-conventions/cf-conventions.html#appendix-grid-mappings
+       
+       
+       It is not complete and does not support all projections.
+       
+       CF PARAMS (NOT SURE OF THE MAPPING):
+       ------------------------------------
+       geoid_name (OGC WKT VERT_DATUM - ex GEOID12B)
+       geopotential_datum_name (OGC WKT VERT_DATUM - ex NAVD88)
+       
+    1: """
+       
+       GRID_MAPPING_NAME_MAP = {
+    1:     "albers_conical_equal_area": "aea",
+    1:     "azimuthal_equidistant": "aeqd",
+    1:     "geostationary": "geos",
+    1:     "lambert_azimuthal_equal_area": "laea",
+    1:     "lambert_conformal_conic": "lcc",
+    1:     "lambert_cylindrical_equal_area": "cea",
+    1:     "mercator": "merc",
+    1:     "oblique_mercator": "omerc",
+    1:     "orthographic": "ortho",
+    1:     "polar_stereographic": "stere",
+    1:     "sinusoidal": "sinu",
+    1:     "stereographic": "stere",
+    1:     "transverse_mercator": "tmerc",
+    1:     "vertical_perspective": "nsper",
+    1:     "rotated_latitude_longitude": "ob_tran",
+    1:     "latitude_longitude": "latlon",
+       }
+       
+       
+   18: INVERSE_GRID_MAPPING_NAME_MAP = {
+   17:     value: key for key, value in GRID_MAPPING_NAME_MAP.items()
+       }
+       
+       PROJ_PARAM_MAP = {
+    1:     "azimuth_of_central_line": "alpha",
+    1:     "earth_radius": "R",
+    1:     "false_easting": "x_0",
+    1:     "false_northing": "y_0",
+    1:     "latitude_of_projection_origin": "lat_0",
+    1:     "north_pole_grid_longitude": "lon_0",
+    1:     "straight_vertical_longitude_from_pole": "lon_0",
+    1:     "longitude_of_central_meridian": "lon_0",
+    1:     "longitude_of_projection_origin": "lon_0",
+    1:     "horizontal_datum_name": "datum",
+    1:     "reference_ellipsoid_name": "ellps",
+    1:     "towgs84": "towgs84",
+    1:     "prime_meridian_name": "pm",
+    1:     "scale_factor_at_central_meridian": "k_0",
+    1:     "scale_factor_at_projection_origin": "k_0",
+    1:     "unit": "units",
+    1:     "perspective_point_height": "h",
+    1:     "grid_north_pole_longitude": "o_lon_p",
+    1:     "grid_north_pole_latitude": "o_lat_p",
+    1:     "semi_major_axis": "a",
+    1:     "semi_minor_axis": "b",
+    1:     "inverse_flattening": "rf",
+    1:     "sweep_angle_axis": "sweep",
+       }
+       
+       
+   25: INVERSE_PROJ_PARAM_MAP = {value: key for key, value in PROJ_PARAM_MAP.items()}
+    1: INVERSE_PROJ_PARAM_MAP.update(lonc="longitude_of_projection_origin")
+       
+       LON_0_MAP = {
+    1:     "DEFAULT": "longitude_of_projection_origin",
+    1:     "rotated_latitude_longitude": "north_pole_grid_longitude",
+    1:     "polar_stereographic": "straight_vertical_longitude_from_pole",
+    1:     "transverse_mercator": "longitude_of_central_meridian",
+    1:     "lambert_cylindrical_equal_area": "longitude_of_central_meridian",
+    1:     "lambert_conformal_conic": "longitude_of_central_meridian",
+    1:     "albers_conical_equal_area": "longitude_of_central_meridian",
+       }
+       
+       K_0_MAP = {
+    1:     "DEFAULT": "scale_factor_at_projection_origin",
+    1:     "transverse_mercator": "scale_factor_at_central_meridian",
+       }
+       
+       
+    1: METHOD_NAME_TO_CF_MAP = {"Transverse Mercator": "transverse_mercator"}
+       
+       
+       PARAM_TO_CF_MAP = {
+    1:     "Latitude of natural origin": "latitude_of_projection_origin",
+    1:     "Longitude of natural origin": "longitude_of_central_meridian",
+    1:     "Latitude of false origin": "latitude_of_projection_origin",
+    1:     "Longitude of false origin": "longitude_of_central_meridian",
+    1:     "Scale factor at natural origin": "scale_factor_at_central_meridian",
+    1:     "Easting at projection centre": "false_easting",
+    1:     "Northing at projection centre": "false_northing",
+    1:     "Easting at false origin": "false_easting",
+    1:     "Northing at false origin": "false_northing",
+    1:     "False easting": "false_easting",
+    1:     "False northing": "false_northing",
+       }

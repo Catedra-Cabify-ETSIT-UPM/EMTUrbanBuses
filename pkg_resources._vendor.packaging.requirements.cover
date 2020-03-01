@@ -1,0 +1,127 @@
+       # This file is dual licensed under the terms of the Apache License, Version
+       # 2.0, and the BSD License. See the LICENSE file in the root of this repository
+       # for complete details.
+    1: from __future__ import absolute_import, division, print_function
+       
+    1: import string
+    1: import re
+       
+    1: from pkg_resources.extern.pyparsing import stringStart, stringEnd, originalTextFor, ParseException
+    1: from pkg_resources.extern.pyparsing import ZeroOrMore, Word, Optional, Regex, Combine
+    1: from pkg_resources.extern.pyparsing import Literal as L  # noqa
+    1: from pkg_resources.extern.six.moves.urllib import parse as urlparse
+       
+    1: from .markers import MARKER_EXPR, Marker
+    1: from .specifiers import LegacySpecifier, Specifier, SpecifierSet
+       
+       
+    2: class InvalidRequirement(ValueError):
+           """
+           An invalid requirement was found, users should refer to PEP 508.
+    1:     """
+       
+       
+    1: ALPHANUM = Word(string.ascii_letters + string.digits)
+       
+    1: LBRACKET = L("[").suppress()
+    1: RBRACKET = L("]").suppress()
+    1: LPAREN = L("(").suppress()
+    1: RPAREN = L(")").suppress()
+    1: COMMA = L(",").suppress()
+    1: SEMICOLON = L(";").suppress()
+    1: AT = L("@").suppress()
+       
+    1: PUNCTUATION = Word("-_.")
+    1: IDENTIFIER_END = ALPHANUM | (ZeroOrMore(PUNCTUATION) + ALPHANUM)
+    1: IDENTIFIER = Combine(ALPHANUM + ZeroOrMore(IDENTIFIER_END))
+       
+    1: NAME = IDENTIFIER("name")
+    1: EXTRA = IDENTIFIER
+       
+    1: URI = Regex(r'[^ ]+')("url")
+    1: URL = (AT + URI)
+       
+    1: EXTRAS_LIST = EXTRA + ZeroOrMore(COMMA + EXTRA)
+    1: EXTRAS = (LBRACKET + Optional(EXTRAS_LIST) + RBRACKET)("extras")
+       
+    1: VERSION_PEP440 = Regex(Specifier._regex_str, re.VERBOSE | re.IGNORECASE)
+    1: VERSION_LEGACY = Regex(LegacySpecifier._regex_str, re.VERBOSE | re.IGNORECASE)
+       
+    1: VERSION_ONE = VERSION_PEP440 ^ VERSION_LEGACY
+    1: VERSION_MANY = Combine(VERSION_ONE + ZeroOrMore(COMMA + VERSION_ONE),
+    1:                        joinString=",", adjacent=False)("_raw_spec")
+    1: _VERSION_SPEC = Optional(((LPAREN + VERSION_MANY + RPAREN) | VERSION_MANY))
+    2: _VERSION_SPEC.setParseAction(lambda s, l, t: t._raw_spec or '')
+       
+    1: VERSION_SPEC = originalTextFor(_VERSION_SPEC)("specifier")
+    2: VERSION_SPEC.setParseAction(lambda s, l, t: t[1])
+       
+    1: MARKER_EXPR = originalTextFor(MARKER_EXPR())("marker")
+    1: MARKER_EXPR.setParseAction(
+    1:     lambda s, l, t: Marker(s[t._original_start:t._original_end])
+       )
+    1: MARKER_SEPERATOR = SEMICOLON
+    1: MARKER = MARKER_SEPERATOR + MARKER_EXPR
+       
+    1: VERSION_AND_MARKER = VERSION_SPEC + Optional(MARKER)
+    1: URL_AND_MARKER = URL + Optional(MARKER)
+       
+       NAMED_REQUIREMENT = \
+    1:     NAME + Optional(EXTRAS) + (URL_AND_MARKER | VERSION_AND_MARKER)
+       
+    1: REQUIREMENT = stringStart + NAMED_REQUIREMENT + stringEnd
+       
+       
+    2: class Requirement(object):
+           """Parse a requirement.
+       
+           Parse a given requirement string into its parts, such as name, specifier,
+           URL, and extras. Raises InvalidRequirement on a badly-formed requirement
+           string.
+    1:     """
+       
+           # TODO: Can we test whether something is contained within a requirement?
+           #       If so how do we do that? Do we need to test against the _name_ of
+           #       the thing as well as the version? What about the markers?
+           # TODO: Can we normalize the name and extra name?
+       
+    1:     def __init__(self, requirement_string):
+    1:         try:
+    1:             req = REQUIREMENT.parseString(requirement_string)
+               except ParseException as e:
+                   raise InvalidRequirement(
+                       "Invalid requirement, parse error at \"{0!r}\"".format(
+                           requirement_string[e.loc:e.loc + 8]))
+       
+    1:         self.name = req.name
+    1:         if req.url:
+                   parsed_url = urlparse.urlparse(req.url)
+                   if not (parsed_url.scheme and parsed_url.netloc) or (
+                           not parsed_url.scheme and not parsed_url.netloc):
+                       raise InvalidRequirement("Invalid URL given")
+                   self.url = req.url
+               else:
+    1:             self.url = None
+    1:         self.extras = set(req.extras.asList() if req.extras else [])
+    1:         self.specifier = SpecifierSet(req.specifier)
+    1:         self.marker = req.marker if req.marker else None
+       
+    1:     def __str__(self):
+               parts = [self.name]
+       
+               if self.extras:
+                   parts.append("[{0}]".format(",".join(sorted(self.extras))))
+       
+               if self.specifier:
+                   parts.append(str(self.specifier))
+       
+               if self.url:
+                   parts.append("@ {0}".format(self.url))
+       
+               if self.marker:
+                   parts.append("; {0}".format(self.marker))
+       
+               return "".join(parts)
+       
+    1:     def __repr__(self):
+               return "<Requirement({0!r})>".format(str(self))

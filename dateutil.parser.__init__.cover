@@ -1,0 +1,60 @@
+       # -*- coding: utf-8 -*-
+    1: from ._parser import parse, parser, parserinfo
+    1: from ._parser import DEFAULTPARSER, DEFAULTTZPARSER
+    1: from ._parser import UnknownTimezoneWarning
+       
+    1: from ._parser import __doc__
+       
+    1: from .isoparser import isoparser, isoparse
+       
+    1: __all__ = ['parse', 'parser', 'parserinfo',
+    1:            'isoparse', 'isoparser',
+    1:            'UnknownTimezoneWarning']
+       
+       
+       ###
+       # Deprecate portions of the private interface so that downstream code that
+       # is improperly relying on it is given *some* notice.
+       
+       
+    1: def __deprecated_private_func(f):
+    1:     from functools import wraps
+    1:     import warnings
+       
+    1:     msg = ('{name} is a private function and may break without warning, '
+                  'it will be moved and or renamed in future versions.')
+    1:     msg = msg.format(name=f.__name__)
+       
+    1:     @wraps(f)
+           def deprecated_func(*args, **kwargs):
+               warnings.warn(msg, DeprecationWarning)
+               return f(*args, **kwargs)
+       
+    1:     return deprecated_func
+       
+    1: def __deprecate_private_class(c):
+    3:     import warnings
+       
+    3:     msg = ('{name} is a private class and may break without warning, '
+                  'it will be moved and or renamed in future versions.')
+    3:     msg = msg.format(name=c.__name__)
+       
+    6:     class private_class(c):
+    3:         __doc__ = c.__doc__
+       
+    3:         def __init__(self, *args, **kwargs):
+                   warnings.warn(msg, DeprecationWarning)
+                   super(private_class, self).__init__(*args, **kwargs)
+       
+    3:     private_class.__name__ = c.__name__
+       
+    3:     return private_class
+       
+       
+    1: from ._parser import _timelex, _resultbase
+    1: from ._parser import _tzparser, _parsetz
+       
+    1: _timelex = __deprecate_private_class(_timelex)
+    1: _tzparser = __deprecate_private_class(_tzparser)
+    1: _resultbase = __deprecate_private_class(_resultbase)
+    1: _parsetz = __deprecated_private_func(_parsetz)
