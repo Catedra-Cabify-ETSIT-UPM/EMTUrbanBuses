@@ -1,4 +1,0 @@
-       # flake8: noqa
-    1: from pandas.core.arrays.sparse import SparseArray, SparseDtype
-    1: from pandas.core.sparse.frame import SparseDataFrame
-    1: from pandas.core.sparse.series import SparseSeries

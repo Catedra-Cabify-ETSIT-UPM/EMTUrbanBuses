@@ -1,9 +1,0 @@
-       # coding: utf-8
-    1: from __future__ import unicode_literals, division, absolute_import, print_function
-       
-    1: from .version import __version__, __version_info__
-       
-       __all__ = [
-    1:     '__version__',
-    1:     '__version_info__',
-       ]

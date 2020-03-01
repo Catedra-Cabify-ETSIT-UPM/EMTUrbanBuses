@@ -1,8 +1,0 @@
-       """
-       Timeseries API
-    1: """
-       
-       # flake8: noqa
-       
-    1: from pandas.tseries.frequencies import infer_freq
-    1: import pandas.tseries.offsets as offsets

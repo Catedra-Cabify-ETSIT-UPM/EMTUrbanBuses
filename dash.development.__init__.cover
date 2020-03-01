@@ -1,2 +1,0 @@
-    1: from . import base_component  # noqa:F401
-    1: from . import component_loader  # noqa:F401

@@ -1,5 +1,0 @@
-    1: from .DataTable import DataTable
-       
-       __all__ = [
-    1:     "DataTable"
-       ]

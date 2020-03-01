@@ -1,5 +1,0 @@
-    1: from __future__ import absolute_import
-       
-    1: from . import ssl_match_hostname
-       
-    1: __all__ = ('ssl_match_hostname', )
