@@ -249,7 +249,7 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
     async def get_data_asynchronous() :
         row_list = []
         points_list = []
-        real_coords_list = []
+        given_coords_list = []
         
         #We set the number of workers that is going to take care about the requests
         with ThreadPoolExecutor(max_workers=10) as executor:
@@ -278,8 +278,8 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
                 buses_data = arrival_data['data'][0]['Arrive']
                 stop_coords = Point(arrival_data['data'][0]['StopInfo'][0]['geometry']['coordinates'])
                 for bus in buses_data :
-                    #Real coordinates provided by the API
-                    real_coords_list.append(Point(bus['geometry']['coordinates']))
+                    #Given coordinates provided by the API
+                    given_coords_list.append(Point(bus['geometry']['coordinates']))
                     #We calculate the bus position depending on the direction it belongs to
                     if bus['destination'] == arrival_data['data'][0]['StopInfo'][0]['lines'][0]['nameB'] :
                         bus['direction'] = '1'
@@ -291,7 +291,7 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
                     values = [bus[key] for key in keys]
                     row_list.append(dict(zip(keys, values)))
                     
-        return [row_list,points_list,real_coords_list]
+        return [row_list,points_list,given_coords_list]
     
     #We declare the loop and call it, then we run it until it is complete
     loop = asyncio.new_event_loop()
@@ -306,7 +306,7 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
     else :
         row_list = future_result[0]
         points_list = future_result[1]
-        real_coords_list = future_result[2]
+        given_coords_list = future_result[2]
     
         #We create the dataframe of the buses
         buses_gdf = pd.DataFrame(row_list, columns=keys)
@@ -314,10 +314,10 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
         for index,row in buses_gdf.iterrows() :
             buses_list.append(str(row['bus'])+'-('+str(row['stop'])+')')
         final_coords_list = []
-        #Use the real coords if they exist
+        #Use the given coords if they exist
         for i in range(0,len(points_list)) :
-            if (real_coords_list[i].y!=0)&(real_coords_list[i].x!=0) :
-                final_coords_list.append(real_coords_list[i])
+            if (given_coords_list[i].y!=0)&(given_coords_list[i].x!=0) :
+                final_coords_list.append(given_coords_list[i])
             else :
                 final_coords_list.append(points_list[i])
         buses_gdf['geometry'] = final_coords_list
@@ -332,7 +332,7 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
         buses_gdf_unique = pd.concat(frames)
         
         #Finally we return the geodataframe
-        return [gpd.GeoDataFrame(buses_gdf_unique,crs=fiona.crs.from_epsg(4326),geometry='geometry'),points_list,real_coords_list,buses_list]
+        return [gpd.GeoDataFrame(buses_gdf_unique,crs=fiona.crs.from_epsg(4326),geometry='geometry'),points_list,given_coords_list,buses_list]
 
 # WE LOGIN IN THE EMT API
 from api_credentials import emails,passwords,XClientId,passKey
@@ -390,16 +390,16 @@ def update_graph_live(lineId_value,n_intervals):
         else :
             arrival_time_data = arrival_time_data_complete[0]
             points_list = arrival_time_data_complete[1]
-            real_coords_list = arrival_time_data_complete[2]
+            given_coords_list = arrival_time_data_complete[2]
             buses_list = arrival_time_data_complete[3]
         
-        #We calculate the distance between real and calc coords
+        #We calculate the distance between given and calc coords
         dist_list = []
         for i in range(0,len(points_list)) :
             lon1 = points_list[i].x
             lat1 = points_list[i].y
-            lon2 = real_coords_list[i].x
-            lat2 = real_coords_list[i].y
+            lon2 = given_coords_list[i].x
+            lat2 = given_coords_list[i].y
             if (lon2 == 0)&(lat2 == 0) :
                 distance = 0
             else :
@@ -499,7 +499,7 @@ def update_graph_live(lineId_value,n_intervals):
             ))
         #And set the figure layout
         fig.update_layout(
-            title='REAL TIME POSITION OF THE BUSES OF LINE {}'.format(lineId),
+            title='Given TIME POSITION OF THE BUSES OF LINE {}'.format(lineId),
             height=500,
             margin=dict(r=0, l=0, t=0, b=0),
             hovermode='closest',
@@ -536,7 +536,7 @@ def update_graph_live(lineId_value,n_intervals):
             height=500,
             margin=dict(r=0, l=0, t=0, b=0),
             yaxis=dict(
-                title='Distance(meters) between calculated distance and real one'
+                title='Distance(meters) between calculated distance and given one'
             )
         )
         

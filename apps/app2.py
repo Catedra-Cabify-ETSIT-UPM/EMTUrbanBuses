@@ -35,7 +35,7 @@ style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
 style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
     
 #Load the buses dataframe and parse the dates
-buses_data = pd.read_csv('../../flash/EMTBuses/buses_data.csv',dtype={'line': 'str','destination': 'str','stop': 'int32','bus': 'int32','real_coords': 'int32','pos_in_burst':'int32','deviation': 'int32','estimateArrive': 'int32','DistanceBus': 'int32','request_time': 'int32','lat':'float','lon':'float'})
+buses_data = pd.read_csv('../../flash/EMTBuses/buses_data.csv',dtype={'line': 'str','destination': 'str','stop': 'int32','bus': 'int32','given_coords': 'int32','pos_in_burst':'int32','deviation': 'int32','estimateArrive': 'int32','DistanceBus': 'int32','request_time': 'int32','lat':'float','lon':'float'})
 buses_data['datetime'] = pd.to_datetime(buses_data['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
 
 #Values for components
@@ -165,7 +165,7 @@ layout = html.Div(className = '', children = [
                     max=100,
                     marks={i*5: '{}%'.format(i*5) for i in range(21) },
                     step=1,
-                    value=0
+                    value=25
                 )
             ]),
             html.Div(className='box',id='figs-buses-trayectory')
@@ -471,25 +471,25 @@ def update_positions(rows,time_range,time_value):
         
         for bus in buses_in_df :
             bus_df = buses_data_reduced.loc[buses_data_reduced['bus']==bus]
-            bus_bools = bus_df['real_coords'].tolist()
+            bus_bools = bus_df['given_coords'].tolist()
             bus_lats = bus_df['lat'].tolist()
             bus_lons = bus_df['lon'].tolist()
             line = bus_df.iloc[0]['line']
             destination = bus_df.iloc[0]['destination']
-            #We construct real and calculated coord lists
-            lats_real = []
-            lons_real = []
+            #We construct given and calculated coord lists
+            lats_given = []
+            lons_given = []
             lats_calc = [] 
             lons_calc = []
             
-            last_real_lat,last_real_lon = None,None
+            last_given_lat,last_given_lon = None,None
             last_calc_lat,last_calc_lon = None,None
             for i in range(len(bus_bools)) :
                 if bus_bools[i] == 1 :
-                    lats_real.append(bus_lats[i])
-                    lons_real.append(bus_lons[i])
-                    last_real_lat = bus_lats[i]
-                    last_real_lon = bus_lons[i]
+                    lats_given.append(bus_lats[i])
+                    lons_given.append(bus_lons[i])
+                    last_given_lat = bus_lats[i]
+                    last_given_lon = bus_lons[i]
             for index,row in bus_df.iterrows() :
                 if row['estimateArrive'] < 10000 : 
                     calc_point = Point(point_by_distance_on_line(row['line'], row['destination'], row['DistanceBus']/1000, row['stop']))
@@ -498,10 +498,10 @@ def update_positions(rows,time_range,time_value):
                     last_calc_lat = calc_point.y
                     last_calc_lon = calc_point.x
             
-            #Trace for real coords
+            #Trace for given coords
             fig_buses_trayectory.add_trace(go.Scattermapbox(
-                lat=lats_real,
-                lon=lons_real,
+                lat=lats_given,
+                lon=lons_given,
                 mode='lines',
                 line=dict(width=2),
                 name='{}-{}-{}'.format(line,bus,destination),
@@ -509,10 +509,10 @@ def update_positions(rows,time_range,time_value):
                 hoverinfo='text'
             ))
             #Bus point for calc coords
-            if not last_real_lat == None :
+            if not last_given_lat == None :
                 fig_buses_trayectory.add_trace(go.Scattermapbox(
-                    lat=[last_real_lat],
-                    lon=[last_real_lon],
+                    lat=[last_given_lat],
+                    lon=[last_given_lon],
                     mode='markers',
                     marker=go.scattermapbox.Marker(
                         size=7,
