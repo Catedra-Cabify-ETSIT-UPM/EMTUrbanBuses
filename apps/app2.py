@@ -204,7 +204,7 @@ def point_by_distance_on_line (line, destination, stop_id, distance) :
         if len(line)==3 :
             line = '5'+line[1:]
         else :
-            line = 'N'+line[1]
+            line = '50'+line[1]
     #Buses with letter id
     elif line == 'F' :
         line = '91'
@@ -406,23 +406,39 @@ def update_graphs(rows):
             fs_bus_df = fs_df.loc[fs_df['bus']==bus]
             line = fs_bus_df.iloc[0]['line']
             bus_times = fs_bus_df['datetime'].tolist()
-            last_time = bus_times[-1]
             bus_dists = [dist/1000 for dist in fs_bus_df['DistanceBus'].tolist()]
             bus_etas = [eta/60 for eta in fs_bus_df['estimateArrive'].tolist()]
-            bus_etas_error = []
-            if bus_etas[-1] <= 1 :
-                for i in range(len(bus_etas)) :
-                    error = (bus_times[i] + timedelta(minutes=bus_etas[i])) - last_time
-                    error_mins = error.total_seconds()/60
-                    bus_etas_error.append(error_mins)
+
+            bus_times_splitted,bus_dists_splitted,bus_etas_splitted,bus_etas_error_splitted = [],[],[],[]
+            last_distance = bus_dists[0]
+            last_index = 0
+            for i in range(len(bus_dists)) :
+                if ((bus_dists[i] - last_distance)>1) | (i==len(bus_dists)-1) :
+                    bus_times_splitted.append(bus_times[last_index:i])
+                    bus_dists_splitted.append(bus_dists[last_index:i])
+                    bus_etas_splitted.append(bus_etas[last_index:i])
+                    #Bus etas error
+                    bus_etas_error = []
+                    last_time = bus_times[i-1]
+                    if bus_etas[i-1] <= 1 :
+                        for k in range(last_index,i) :
+                            error = (bus_times[k] + timedelta(minutes=bus_etas[k])) - last_time
+                            error_mins = error.total_seconds()/60
+                            bus_etas_error.append(error_mins)
+                        bus_etas_error_splitted.append(bus_etas_error)
+
+                    last_index = i
+                last_distance = bus_dists[i]
 
             # Create and style traces
-            fig1.add_trace(go.Scatter(x=bus_times, y=bus_dists, name='{}-{}'.format(line,bus),
-                                     line=dict(width=4)))
-            fig2.add_trace(go.Scatter(x=bus_times, y=bus_etas, name='{}-{}'.format(line,bus),
-                                     line=dict(width=4)))
-            fig3.add_trace(go.Scatter(x=bus_times, y=bus_etas_error, name='{}-{}'.format(line,bus),
-                                     line=dict(width=4)))
+            for i in range(len(bus_times_splitted)) :
+                fig1.add_trace(go.Scatter(x=bus_times_splitted[i], y=bus_dists_splitted[i], name='{}-{}'.format(line,bus),
+                                         line=dict(width=1)))
+                fig2.add_trace(go.Scatter(x=bus_times_splitted[i], y=bus_etas_splitted[i], name='{}-{}'.format(line,bus),
+                                         line=dict(width=1)))
+            for i in range(len(bus_etas_error_splitted)) :
+                fig3.add_trace(go.Scatter(x=bus_times_splitted[i], y=bus_etas_error_splitted[i], name='{}-{}'.format(line,bus),
+                                         line=dict(width=1)))
         # Edit the layout
         fig1.update_layout(title='Distance remaining for the buses heading stop {}'.format(first_stop),
                            xaxis_title='Time',

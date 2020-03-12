@@ -50,7 +50,7 @@ layout = html.Div(className = '', children = [
             n_intervals=0
         )
     ])
-    
+
 ])
 
 # API FUNCTIONS
@@ -74,7 +74,7 @@ def requests_retry_session(retries=3,backoff_factor=0.3,status_forcelist=(500, 5
 def get_access_token(email,password) :
     '''
     Returns the access token of the EMT Madrid API
-        
+
         Parameters
         ----------
         email : string
@@ -107,7 +107,7 @@ def get_access_token(email,password) :
             return '98'
         else :
             return json_response['data'][0]['accessToken']
-    
+
     except requests.exceptions.RequestException as e:
         print(e + '\n')
         return 'Error'
@@ -125,7 +125,7 @@ def get_arrival_times(lineId,stopId,accessToken) :
         accessToken: string
             The accessToken obtained in the login
     """
-    
+
     #We build the body for the request
     body = {
         'cultureInfo': 'ES',
@@ -134,7 +134,7 @@ def get_arrival_times(lineId,stopId,accessToken) :
         'Text_IncidencesRequired_YN': 'N',
         'DateTime_Referenced_Incidencies_YYYYMMDD':'20200130'
     }
-    
+
     #And we perform the request
     try:
         response = requests_retry_session().post(
@@ -160,14 +160,14 @@ def haversine(coord1, coord2):
     R = 6372800  # Earth radius in meters
     lat1, lon1 = coord1
     lat2, lon2 = coord2
-    
-    phi1, phi2 = math.radians(lat1), math.radians(lat2) 
+
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi       = math.radians(lat2 - lat1)
     dlambda    = math.radians(lon2 - lon1)
-    
+
     a = math.sin(dphi/2)**2 + \
         math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
-    
+
     return 2*R*math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 def point_by_distance_on_line (line, line_lenght, distance, origin_point) :
@@ -185,16 +185,16 @@ def point_by_distance_on_line (line, line_lenght, distance, origin_point) :
         origin_point : Point
             The location of the bus stop
     """
-    
+
     #First we calculate the normalized distance of the bus from the start of the line
     #by substracting the distance of the bus to the stop to the distance of the stop to the start of the line
     #which is returned by the project method of the shapely module
     normalized_distance = line.project(origin_point,normalized=True) - distance/line_lenght
-    
-    #Then we get the the coordinates of the point that is at the normalized distance obtained 
+
+    #Then we get the the coordinates of the point that is at the normalized distance obtained
     #before from the start of the line with the interpolate method
     interpolated_point = line.interpolate(normalized_distance,normalized=True)
-    
+
     #And we return the coordinates of the point
     return (interpolated_point.x,interpolated_point.y)
 
@@ -232,25 +232,25 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
         lineId = 'C1'
     elif lineId == '69' :
         lineId = 'C2'
-    
+
     #We get the LineString object and length from the rows
     line1_geom = line1['geometry']
     line1_length = line1['dist']
     line2_geom = line2['geometry']
     line2_length = line2['dist']
-    
+
     #The keys for the dataframe that is going to be built
     keys = ['bus','line','direction','stop','isHead','destination','deviation','estimateArrive','DistanceBus']
 
     #List with all the stops in both directions
     stop_codes = list(set(stops_dir1 + stops_dir2))
-    
+
     #Function to perform the requests asynchronously, performing them concurrently would be too slow
     async def get_data_asynchronous() :
         row_list = []
         points_list = []
         given_coords_list = []
-        
+
         #We set the number of workers that is going to take care about the requests
         with ThreadPoolExecutor(max_workers=10) as executor:
             #We create a loop object
@@ -287,18 +287,18 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
                     else :
                         bus['direction'] = '2'
                         points_list.append(Point(point_by_distance_on_line(line2_geom,line2_length,bus['DistanceBus']/1000,stop_coords)))
-                        
+
                     values = [bus[key] for key in keys]
                     row_list.append(dict(zip(keys, values)))
-                    
+
         return [row_list,points_list,given_coords_list]
-    
+
     #We declare the loop and call it, then we run it until it is complete
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     future = asyncio.ensure_future(get_data_asynchronous())
     loop.run_until_complete(future)
-    
+
     #And once it is completed we gather the information returned by it like this
     future_result = future.result()
     if future_result == 'Hits of account spent' :
@@ -307,7 +307,7 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
         row_list = future_result[0]
         points_list = future_result[1]
         given_coords_list = future_result[2]
-    
+
         #We create the dataframe of the buses
         buses_gdf = pd.DataFrame(row_list, columns=keys)
         buses_list = []
@@ -329,17 +329,17 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
             buses_gdf_reduced = buses_gdf.loc[(buses_gdf['bus']==busId)]
             frames.append(buses_gdf_reduced.loc[buses_gdf_reduced['DistanceBus']==buses_gdf_reduced['DistanceBus'].min()])
 
-        buses_gdf_unique = pd.concat(frames)
-        
+        buses_gdf_unique = gpd.GeoDataFrame(pd.concat(frames),crs=fiona.crs.from_epsg(4326),geometry='geometry')
+
         #Finally we return the geodataframe
-        return [gpd.GeoDataFrame(buses_gdf_unique,crs=fiona.crs.from_epsg(4326),geometry='geometry'),points_list,given_coords_list,buses_list]
+        return [buses_gdf_unique,points_list,given_coords_list,buses_list]
 
 # WE LOGIN IN THE EMT API
 from api_credentials import emails,passwords,XClientId,passKey
 #Try to get an accessToken until we get a response to the login without errors
 for i in range(0,5) :
     accessToken = 'Error'
-    while accessToken == 'Error' : 
+    while accessToken == 'Error' :
         accessToken = get_access_token(emails[i],passwords[i])
     if accessToken == '98' :
         if i == 4 :
@@ -348,7 +348,7 @@ for i in range(0,5) :
     else :
         #Login made correctly
         break
-        
+
 #Token for the mapbox api
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
 style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
@@ -363,7 +363,7 @@ style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
 def update_graph_live(lineId_value,n_intervals):
     '''
     Function that updates the graph each x seconds depending on the value of lineId
-    
+
         Parameters
         ---
         input_lineId_value: string
@@ -371,7 +371,7 @@ def update_graph_live(lineId_value,n_intervals):
     '''
     try:
         lineId = lineId_value
-        
+
         #We get the stops of the line from the dict
         stops_dir1 = line_stops_dict[lineId]['1']['stops']
         stops_dir2 = line_stops_dict[lineId]['2']['stops']
@@ -382,7 +382,7 @@ def update_graph_live(lineId_value,n_intervals):
         center = line1['geometry'].centroid
         center_x = float(center.x)
         center_y = float(center.y)
-        
+
         #We obtain the arrival data for the line
         arrival_time_data_complete = get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,accessToken)
         if arrival_time_data_complete == 'Hits of account spent' :
@@ -392,7 +392,7 @@ def update_graph_live(lineId_value,n_intervals):
             points_list = arrival_time_data_complete[1]
             given_coords_list = arrival_time_data_complete[2]
             buses_list = arrival_time_data_complete[3]
-        
+
         #We calculate the distance between given and calc coords
         dist_list = []
         for i in range(0,len(points_list)) :
@@ -405,21 +405,21 @@ def update_graph_live(lineId_value,n_intervals):
             else :
                 distance = haversine((lat1,lon1),(lat2, lon2))
             dist_list.append(distance) #Distancia en metros
-            
+
         #Style depending on hour
         now = datetime.datetime.now()
         if (datetime.time(6,0,0) <= now.time() <= datetime.time(23,30,0)) :
             style = style_day
         else :
             style = style_night
-            
+
         #We create the figure object
         fig = go.Figure()
         #Add the bus points to the figure
         for index,bus in arrival_time_data.iterrows() :
             if bus['direction'] == '1' :
                 color = 'blue'
-            else : 
+            else :
                 color = 'red'
             fig.add_trace(go.Scattermapbox(
                 lat=[bus['geometry'].y],
@@ -446,7 +446,7 @@ def update_graph_live(lineId_value,n_intervals):
                 text=['{}-{}'.format(bus['bus'],bus['stop'])],
                 hoverinfo='text'
             ))
-            
+
         #Add the stops to the figure
         stops_selected1 = stops.loc[stops['stop_code'].isin(stops_dir1[1:])]
         fig.add_trace(go.Scattermapbox(
@@ -474,7 +474,7 @@ def update_graph_live(lineId_value,n_intervals):
             text=stops_selected2['stop_code'],
             hoverinfo='text'
         ))
-        
+
         #Plot the lines in soft color
         for index, row in route_lines.loc[route_lines['line_id']==lineId].iterrows():
             line = row['geometry']
@@ -483,12 +483,12 @@ def update_graph_live(lineId_value,n_intervals):
             for coords in list(line.coords) :
                 x_coords.append(coords[0])
                 y_coords.append(coords[1])
-            
+
             if row['direction'] == '1':
                 color = 'rgb(108, 173, 245)'
             else :
                 color = 'rgb(243, 109, 90)'
-                
+
             fig.add_trace(go.Scattermapbox(
                 lat=y_coords,
                 lon=x_coords,
@@ -524,7 +524,7 @@ def update_graph_live(lineId_value,n_intervals):
         for index in sorted(pop_list, reverse=True):
             del buses_list[index]
             del dist_list[index]
-        
+
         #We create the figure object
         fig2 = go.Figure()
         fig2.add_trace(go.Bar(x=buses_list,
@@ -539,7 +539,7 @@ def update_graph_live(lineId_value,n_intervals):
                 title='Distance(meters) between calculated distance and given one'
             )
         )
-        
+
         #And finally we return the graph element
         return [
             html.Div(className='columns',children=[
