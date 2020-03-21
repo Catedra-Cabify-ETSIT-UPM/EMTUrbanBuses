@@ -3,7 +3,7 @@ import dash_html_components as html
 from dash.dependencies import Input, Output
 
 from app import app
-from apps import app_home, app1, app2, app_credits
+from apps import app_home, app_credits, app1, app2
 
 #APP INDEX STRING
 app.index_string = '''
@@ -33,7 +33,7 @@ app.index_string = '''
     <body class="body">
 
         <nav class="navbar navlogo" role="navigation" aria-label="main navigation">
-          
+
           <div class="navbar-brand">
             <a class="navbar-item logo1" href="/">EMT BUSES</a>
             <div class="navbar-burger burger" data-target="navMenu">
@@ -42,7 +42,7 @@ app.index_string = '''
               <span></span>
             </div>
           </div>
-        
+
           <div id="navMenu" class="navbar-menu">
 
             <div class="navbar-start">
@@ -51,10 +51,10 @@ app.index_string = '''
               <a class="navbar-item" href="/apps/app2">DATA RETRIEVED MONITORING</a>
               <a class="navbar-item" href="/credits">Credits</a>
             </div>
-            
+
           </div>
         </nav>
-        
+
         <script type="text/javascript">
             document.addEventListener('DOMContentLoaded', () => {
 

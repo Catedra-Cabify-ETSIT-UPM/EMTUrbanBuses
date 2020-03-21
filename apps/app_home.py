@@ -3,27 +3,20 @@ import dash_html_components as html
 from dash.dependencies import Input, Output
 
 import pandas as pd
-import geopandas as gpd
 import json
 
 import plotly.graph_objects as go
-from shapely.geometry import shape
-from shapely.geometry import Point, LineString
-from shapely import wkt
-import fiona
-import branca.colormap as cm
 
 import datetime
-from collections import Counter
 
 from app import app
 
-# CARGAMOS LOS DATOS
-stops = gpd.read_file('M6Data/stops.json')
-route_lines = gpd.read_file('M6Data/route_lines.json')
+# WE LOAD THE DATA
+stops = pd.read_json('M6Data/stops.json')
+lines_shapes = pd.read_json('M6Data/lines_shapes.json')
 with open('M6Data/line_stops_dict.json', 'r') as f:
     line_stops_dict = json.load(f)
-    
+
 layout = html.Div(className = '', children = [
 
     html.Div(className = 'box', children = [
@@ -70,12 +63,12 @@ def update_lines_graph(lineIds_value):
         else :
             if lineIds=='All' :
                 showAll = True
-        
+
         if showAll :
-            stops_of_lines = stops['stop_code'].tolist()
+            stops_of_lines = stops.id.tolist()
             stops_selected = stops
-            lines_selected = route_lines       
-        else: 
+            lines_selected = lines_shapes
+        else:
             stops_of_lines = []
             for lineId in lineIds :
                 if line_stops_dict[lineId] != None :
@@ -85,59 +78,54 @@ def update_lines_graph(lineIds_value):
                         stops_of_lines = stops_of_lines + line_stops_dict[lineId]['2']['stops']
 
             stops_of_lines = list(set(stops_of_lines))
-            stops_selected = stops.loc[stops['stop_code'].isin(stops_of_lines)]
+            stops_selected = stops.loc[stops.id.isin(stops_of_lines)]
 
             if type(lineIds) is list:
-                lines_selected = route_lines.loc[route_lines['line_id'].isin(lineIds)]
+                lineIds = [int(i) for i in lineIds]
+                lines_selected = lines_shapes.loc[lines_shapes.line_id.isin(lineIds)]
             else :
-                lines_selected = route_lines.loc[route_lines['line_id']==lineIds]
-        
+                lines_selected = lines_shapes.loc[lines_shapes.line_id==int(lineIds)]
+
         #We set the center of the map
-        center_x = lines_selected.centroid.x.mean()
-        center_y = lines_selected.centroid.y.mean()
+        center_x = stops_selected.lon.mean()
+        center_y = stops_selected.lat.mean()
+
         #Style depending on hour
         now = datetime.datetime.now()
         if (datetime.time(6,0,0) <= now.time() <= datetime.time(23,30,0)) :
             style = style_day
         else :
             style = style_night
-        
+
         #We create the figure object
         fig = go.Figure()
         #Add the stops to the figure
         fig.add_trace(go.Scattermapbox(
-            lat=stops_selected['geometry'].y,
-            lon=stops_selected['geometry'].x,
+            lat=stops_selected.lat,
+            lon=stops_selected.lon,
             mode='markers',
             marker=go.scattermapbox.Marker(
-                size=10,
+                size=8,
                 color='green',
                 opacity=0.7
             ),
-            text=stops_selected['stop_code'],
+            text=stops_selected.id,
             hoverinfo='text'
         ))
         #Add lines to the figure
-        for index, row in lines_selected.iterrows():
-            line = row['geometry']
-            x_coords = []
-            y_coords = []
-            for coords in list(line.coords) :
-                x_coords.append(coords[0])
-                y_coords.append(coords[1])
-            
-            if row['direction'] == '1' :
-                color = 'blue'
-            else :
-                color = 'red'
-            fig.add_trace(go.Scattermapbox(
-                lat=y_coords,
-                lon=x_coords,
-                mode='lines',
-                line=dict(width=2, color=color),
-                text='Línea : {}-{}'.format(row['line_id'],row['direction']),
-                hoverinfo='text'
-            ))
+        for line_id in lines_selected.line_id.unique() :
+            for direction in [1,2] :
+                color = 'blue' if direction == 1 else 'red'
+                line_dir_df = lines_selected.loc[(lines_selected.line_id == line_id) & (lines_selected.direction == direction)]
+                fig.add_trace(go.Scattermapbox(
+                    lat=line_dir_df.lat,
+                    lon=line_dir_df.lon,
+                    mode='lines',
+                    line=dict(width=1.5, color=color),
+                    text='Línea : {}-{}'.format(line_id,direction),
+                    hoverinfo='text'
+                ))
+
         #And set the figure layout
         fig.update_layout(
             title='LINES AND STOPS SELECTED MAP',
@@ -157,7 +145,7 @@ def update_lines_graph(lineIds_value):
                 style=style
             )
         )
-        
+
         #And finally we return the graph element
         if len(stops_of_lines)==0 :
             return 'Please select one or multiple line ids from the list'
@@ -181,8 +169,3 @@ def update_lines_graph(lineIds_value):
     except :
         #If there is an error we ask for a valid line id
         return 'Please select one or multiple line ids from the list'
-        
-        
-        
-        
-            

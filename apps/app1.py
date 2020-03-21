@@ -7,19 +7,13 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
 import pandas as pd
-import geopandas as gpd
 import json
 
 import plotly.graph_objects as go
-from shapely.geometry import shape
-from shapely.geometry import Point, LineString
-from shapely import wkt
 import math
-import fiona
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-import random
 import datetime
 
 from app import app
@@ -27,10 +21,11 @@ from app import app
 
 
 # WE LOAD THE DATA
-stops = gpd.read_file('M6Data/stops.json')
-route_lines = gpd.read_file('M6Data/route_lines.json')
+stops = pd.read_json('M6Data/stops.json')
+lines_shapes = pd.read_json('M6Data/lines_shapes.json')
 with open('M6Data/line_stops_dict.json', 'r') as f:
     line_stops_dict = json.load(f)
+
 
 layout = html.Div(className = '', children = [
 
@@ -46,12 +41,18 @@ layout = html.Div(className = '', children = [
         html.Div(className='box',id='live-update-graph'),
         dcc.Interval(
             id='interval-component',
-            interval=7.5*1000, # in milliseconds
+            interval=10*1000, # in milliseconds
             n_intervals=0
         )
     ])
 
 ])
+
+#MAPBOX API TOKEN AND STYLES
+mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
+style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
+style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
+
 
 # API FUNCTIONS
 def requests_retry_session(retries=3,backoff_factor=0.3,status_forcelist=(500, 502, 504),session=None):
@@ -129,7 +130,7 @@ def get_arrival_times(lineId,stopId,accessToken) :
     #We build the body for the request
     body = {
         'cultureInfo': 'ES',
-        'Text_StopRequired_YN': 'Y',
+        'Text_StopRequired_YN': 'N',
         'Text_EstimationsRequired_YN': 'Y',
         'Text_IncidencesRequired_YN': 'N',
         'DateTime_Referenced_Incidencies_YYYYMMDD':'20200130'
@@ -152,6 +153,23 @@ def get_arrival_times(lineId,stopId,accessToken) :
         print(e + '\n')
         return 'Error'
 
+
+# WE LOGIN IN THE EMT API
+from api_credentials import emails,passwords,XClientId,passKey
+#Try to get an accessToken until we get a response to the login without errors
+for i in range(0,5) :
+    accessToken = 'Error'
+    while accessToken == 'Error' :
+        accessToken = get_access_token(emails[i],passwords[i])
+    if accessToken == '98' :
+        if i == 4 :
+            print('No hits available in any of the accounts - Closing server')
+            exit(0)
+    else :
+        #Login made correctly
+        break
+
+
 # FUNCTIONS
 def haversine(coord1, coord2):
     '''
@@ -170,86 +188,92 @@ def haversine(coord1, coord2):
 
     return 2*R*math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-def point_by_distance_on_line (line, line_lenght, distance, origin_point) :
+def find_nearest_row(df,lat,lon) :
+    """
+    Returns the row nearest to the coordinates passed in the dataframe
+
+        Parameters
+        ----------
+        df : dataframe
+            Dataframe where we want to find the row
+        lat: float
+        lon: float
+    """
+    min_dist_error = 1000000.0
+    for row in df.itertuples() :
+        error = math.sqrt(abs(row.lat-lat)+abs(row.lon-lon))
+        if  error < min_dist_error :
+            min_dist_error = error
+            nearest_row = row
+    return nearest_row
+
+def find_nearest_row_by_dist(df,dist_traveled) :
+    """
+    Returns the row nearest to the distance traveled passed in the dataframe
+
+        Parameters
+        ----------
+        df : dataframe
+            Dataframe where we want to find the row
+        dist_traveled : float
+    """
+    min_dist_error = 1000000.0
+    for row in df.itertuples() :
+        error = abs(row.dist_traveled-dist_traveled)
+        if  error < min_dist_error :
+            min_dist_error = error
+            nearest_row = row
+    return nearest_row
+
+def point_by_distance_on_line (line,distance,stop_lat,stop_lon) :
     """
     Returns the coordinates of the bus location
 
         Parameters
         ----------
-        line : LineString
-            The line that the bus belongs to
-        line_length : float
-            The length of the line
+        line: DataFrame
+            Points belonging to the requested line
         distance : float
-            The distance of the bus to the stop in kilometers
-        origin_point : Point
-            The location of the bus stop
+            Distance of the bus to the stop in meters
+        stop_lat : float
+        stop_lon : float
     """
 
-    #First we calculate the normalized distance of the bus from the start of the line
-    #by substracting the distance of the bus to the stop to the distance of the stop to the start of the line
-    #which is returned by the project method of the shapely module
-    normalized_distance = line.project(origin_point,normalized=True) - distance/line_lenght
-
-    #Then we get the the coordinates of the point that is at the normalized distance obtained
-    #before from the start of the line with the interpolate method
-    interpolated_point = line.interpolate(normalized_distance,normalized=True)
+    nearest_row_to_stop = find_nearest_row(line,stop_lat,stop_lon)
+    dist_traveled_of_bus = nearest_row_to_stop.dist_traveled - distance
+    nearest_row_to_distance = find_nearest_row_by_dist(line,dist_traveled_of_bus)
 
     #And we return the coordinates of the point
-    return (interpolated_point.x,interpolated_point.y)
+    return nearest_row_to_distance.lon,nearest_row_to_distance.lat
 
-def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,accessToken) :
+def get_arrival_time_data_of_line(line1,line2,accessToken) :
     """
     Returns the data of all the buses inside the desired line
 
         Parameters
         ----------
-        lineId : string
-            The line id
-        line1 : DataFrame row
+        line1 : DataFrame
             Data about the line in direction 1
-        line2 : DataFrame row
+        line2 : DataFrame
             Data about the line in direction 2
-        stops_dir1 : list
-            The list of the stops for direction 1
-        stops_dir2 : list
-            The list of the stops for direction 2
         accessToken: string
             The accessToken obtained in the login
     """
-    #For night buses
-    if len(lineId)==3 and lineId[0]=='5' :
-        if lineId[1]=='0' :
-            lineId = 'N'+lineId[2]
-        else :
-            lineId = 'N'+lineId[1:]
-    #Buses with letter id
-    elif lineId == '91' :
-        lineId = 'F'
-    elif lineId == '92' :
-        lineId = 'G'
-    elif lineId == '68' :
-        lineId = 'C1'
-    elif lineId == '69' :
-        lineId = 'C2'
-
-    #We get the LineString object and length from the rows
-    line1_geom = line1['geometry']
-    line1_length = line1['dist']
-    line2_geom = line2['geometry']
-    line2_length = line2['dist']
+    #id and short name of the line used for the requests
+    line_id = str(line1.iloc[0].line_id)
+    line_sn = line1.iloc[0].line_sn
 
     #The keys for the dataframe that is going to be built
     keys = ['bus','line','direction','stop','isHead','destination','deviation','estimateArrive','DistanceBus']
 
     #List with all the stops in both directions
-    stop_codes = list(set(stops_dir1 + stops_dir2))
+    stop_codes = list(set(line_stops_dict[line_id]['1']['stops'] + line_stops_dict[line_id]['2']['stops']))
 
     #Function to perform the requests asynchronously, performing them concurrently would be too slow
     async def get_data_asynchronous() :
         row_list = []
-        points_list = []
-        given_coords_list = []
+        calc_lats,calc_lons = [],[]
+        given_lats,given_lons = [],[]
 
         #We set the number of workers that is going to take care about the requests
         with ThreadPoolExecutor(max_workers=10) as executor:
@@ -260,9 +284,9 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
                 loop.run_in_executor(
                     executor,
                     get_arrival_times, #Function that is gonna be called by the tasks
-                    *(lineId,stopId,accessToken)  #Parameters for the function
+                    *(line_sn,stop_id,accessToken)  #Parameters for the function
                 )
-                for stopId in stop_codes
+                for stop_id in stop_codes
             ]
             #And finally we perform the tasks and gather the information returned by them into two lists
             for response in await asyncio.gather(*tasks) :
@@ -276,22 +300,27 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
 
                 #We get the buses data and stop coords
                 buses_data = arrival_data['data'][0]['Arrive']
-                stop_coords = Point(arrival_data['data'][0]['StopInfo'][0]['geometry']['coordinates'])
+                stop = stops.loc[stops.id == int(buses_data[0]['stop'])]
                 for bus in buses_data :
                     #Given coordinates provided by the API
-                    given_coords_list.append(Point(bus['geometry']['coordinates']))
+                    given_lons.append(bus['geometry']['coordinates'][0])
+                    given_lats.append(bus['geometry']['coordinates'][1])
                     #We calculate the bus position depending on the direction it belongs to
-                    if bus['destination'] == arrival_data['data'][0]['StopInfo'][0]['lines'][0]['nameB'] :
+                    if bus['stop'] in line_stops_dict[line_id]['1']['stops'][1:] :
                         bus['direction'] = '1'
-                        points_list.append(Point(point_by_distance_on_line(line1_geom,line1_length,bus['DistanceBus']/1000,stop_coords)))
+                        calc_lon,calc_lat = point_by_distance_on_line(line1,bus['DistanceBus'],stop.lat,stop.lon)
+                        calc_lons.append(calc_lon)
+                        calc_lats.append(calc_lat)
                     else :
                         bus['direction'] = '2'
-                        points_list.append(Point(point_by_distance_on_line(line2_geom,line2_length,bus['DistanceBus']/1000,stop_coords)))
+                        calc_lon,calc_lat = point_by_distance_on_line(line2,bus['DistanceBus'],stop.lat,stop.lon)
+                        calc_lons.append(calc_lon)
+                        calc_lats.append(calc_lat)
 
                     values = [bus[key] for key in keys]
                     row_list.append(dict(zip(keys, values)))
 
-        return [row_list,points_list,given_coords_list]
+        return row_list, calc_lats, calc_lons, given_lats, given_lons
 
     #We declare the loop and call it, then we run it until it is complete
     loop = asyncio.new_event_loop()
@@ -305,54 +334,41 @@ def get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,acces
         return 'Hits of account spent'
     else :
         row_list = future_result[0]
-        points_list = future_result[1]
-        given_coords_list = future_result[2]
+        calc_lats = future_result[1]
+        calc_lons = future_result[2]
+        given_lats = future_result[3]
+        given_lons = future_result[4]
 
         #We create the dataframe of the buses
-        buses_gdf = pd.DataFrame(row_list, columns=keys)
-        buses_list = []
-        for index,row in buses_gdf.iterrows() :
-            buses_list.append(str(row['bus'])+'-('+str(row['stop'])+')')
-        final_coords_list = []
+        buses_df = pd.DataFrame(row_list, columns=keys)
+        buses_list = [str(row.bus)+'-('+str(row.stop)+')' for row in buses_df.itertuples()]
+        final_lats,final_lons = [],[]
         #Use the given coords if they exist
-        for i in range(0,len(points_list)) :
-            if (given_coords_list[i].y!=0)&(given_coords_list[i].x!=0) :
-                final_coords_list.append(given_coords_list[i])
+        for i in range(len(calc_lats)) :
+            if (given_lats[i]!=0)&(given_lons[i]!=0) :
+                final_lats.append(given_lats[i])
+                final_lons.append(given_lons[i])
             else :
-                final_coords_list.append(points_list[i])
-        buses_gdf['geometry'] = final_coords_list
-        buses_gdf['calc_coord'] = points_list
+                final_lats.append(calc_lats[i])
+                final_lons.append(calc_lons[i])
+
+        buses_df['lat'] = final_lats
+        buses_df['lon'] = final_lons
+
+        buses_df['calc_lat'] = calc_lats
+        buses_df['calc_lon'] = calc_lons
 
         #And then we get only the rows where each bus is closer to a stop (lower DistanceBus attrib)
         frames = []
-        for busId in buses_gdf['bus'].unique() :
-            buses_gdf_reduced = buses_gdf.loc[(buses_gdf['bus']==busId)]
-            frames.append(buses_gdf_reduced.loc[buses_gdf_reduced['DistanceBus']==buses_gdf_reduced['DistanceBus'].min()])
+        final_rows = []
+        for bus_id in buses_df.bus.unique() :
+            buses_df_reduced = buses_df.loc[(buses_df.bus==bus_id)]
+            final_rows.append(buses_df_reduced.loc[buses_df_reduced.DistanceBus==buses_df_reduced.DistanceBus.min()].iloc[0])
 
-        buses_gdf_unique = gpd.GeoDataFrame(pd.concat(frames),crs=fiona.crs.from_epsg(4326),geometry='geometry')
+        buses_df_unique = pd.DataFrame(final_rows, columns=keys+['lat','lon','calc_lat','calc_lon'])
 
-        #Finally we return the geodataframe
-        return [buses_gdf_unique,points_list,given_coords_list,buses_list]
-
-# WE LOGIN IN THE EMT API
-from api_credentials import emails,passwords,XClientId,passKey
-#Try to get an accessToken until we get a response to the login without errors
-for i in range(0,5) :
-    accessToken = 'Error'
-    while accessToken == 'Error' :
-        accessToken = get_access_token(emails[i],passwords[i])
-    if accessToken == '98' :
-        if i == 4 :
-            print('No hits available in any of the accounts - Closing server')
-            exit(0)
-    else :
-        #Login made correctly
-        break
-
-#Token for the mapbox api
-mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
-style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
-style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
+        #Finally we return all the data
+        return buses_df_unique, calc_lats, calc_lons, given_lats, given_lons, buses_list
 
 # CALLBACKS
 
@@ -370,36 +386,34 @@ def update_graph_live(lineId_value,n_intervals):
             The line whose buses are going to be ploted
     '''
     try:
-        lineId = lineId_value
+        lineId = int(lineId_value)
 
-        #We get the stops of the line from the dict
-        stops_dir1 = line_stops_dict[lineId]['1']['stops']
-        stops_dir2 = line_stops_dict[lineId]['2']['stops']
         #And the line rows
-        line1 = route_lines.loc[(route_lines['line_id']==lineId)&(route_lines['direction']=='1')]
-        line2 = route_lines.loc[(route_lines['line_id']==lineId)&(route_lines['direction']=='2')]
+        line1 = lines_shapes.loc[(lines_shapes['line_id']==lineId)&(lines_shapes['direction']==1)]
+        line2 = lines_shapes.loc[(lines_shapes['line_id']==lineId)&(lines_shapes['direction']==2)]
         #Set the center of the graph to the centroid of the line
-        center = line1['geometry'].centroid
-        center_x = float(center.x)
-        center_y = float(center.y)
+        center_x = line1.lon.mean()
+        center_y = line2.lat.mean()
 
         #We obtain the arrival data for the line
-        arrival_time_data_complete = get_arrival_time_data_of_line(lineId,line1,line2,stops_dir1,stops_dir2,accessToken)
+        arrival_time_data_complete = get_arrival_time_data_of_line(line1,line2,accessToken)
         if arrival_time_data_complete == 'Hits of account spent' :
             return 'Hits of account spent'
         else :
             arrival_time_data = arrival_time_data_complete[0]
-            points_list = arrival_time_data_complete[1]
-            given_coords_list = arrival_time_data_complete[2]
-            buses_list = arrival_time_data_complete[3]
+            calc_lats = arrival_time_data_complete[1]
+            calc_lons = arrival_time_data_complete[2]
+            given_lats = arrival_time_data_complete[3]
+            given_lons = arrival_time_data_complete[4]
+            buses_list = arrival_time_data_complete[5]
 
         #We calculate the distance between given and calc coords
         dist_list = []
-        for i in range(0,len(points_list)) :
-            lon1 = points_list[i].x
-            lat1 = points_list[i].y
-            lon2 = given_coords_list[i].x
-            lat2 = given_coords_list[i].y
+        for i in range(0,len(calc_lats)) :
+            lon1 = calc_lons[i]
+            lat1 = calc_lats[i]
+            lon2 = given_lons[i]
+            lat2 = given_lats[i]
             if (lon2 == 0)&(lat2 == 0) :
                 distance = 0
             else :
@@ -407,99 +421,84 @@ def update_graph_live(lineId_value,n_intervals):
             dist_list.append(distance) #Distancia en metros
 
         #Style depending on hour
-        now = datetime.datetime.now()
-        if (datetime.time(6,0,0) <= now.time() <= datetime.time(23,30,0)) :
-            style = style_day
-        else :
-            style = style_night
+        style = style_day
 
         #We create the figure object
         fig = go.Figure()
         #Add the bus points to the figure
-        for index,bus in arrival_time_data.iterrows() :
-            if bus['direction'] == '1' :
+        for bus in arrival_time_data.itertuples() :
+            if bus.direction == '1' :
                 color = 'blue'
             else :
                 color = 'red'
             fig.add_trace(go.Scattermapbox(
-                lat=[bus['geometry'].y],
-                lon=[bus['geometry'].x],
+                lat=[bus.lat],
+                lon=[bus.lon],
                 mode='markers',
                 marker=go.scattermapbox.Marker(
                     size=10,
                     color=color,
                     opacity=0.7
                 ),
-                text=['{}-{}'.format(bus['bus'],bus['stop'])],
+                text=['{}-{}'.format(bus.bus,bus.stop)],
                 hoverinfo='text'
             ))
             #Add the calculated coords points to the figure
             fig.add_trace(go.Scattermapbox(
-                lat=[bus['calc_coord'].y],
-                lon=[bus['calc_coord'].x],
+                lat=[bus.calc_lat],
+                lon=[bus.calc_lon],
                 mode='markers',
                 marker=go.scattermapbox.Marker(
                     size=8,
                     color='black',
                     opacity=0.7
                 ),
-                text=['{}-{}'.format(bus['bus'],bus['stop'])],
+                text=['{}-{}'.format(bus.bus,bus.bus)],
                 hoverinfo='text'
             ))
 
         #Add the stops to the figure
-        stops_selected1 = stops.loc[stops['stop_code'].isin(stops_dir1[1:])]
+        stops_selected1 = stops.loc[stops.id.isin(line_stops_dict[str(lineId)]['1']['stops'][1:])]
         fig.add_trace(go.Scattermapbox(
-            lat=stops_selected1['geometry'].y,
-            lon=stops_selected1['geometry'].x,
+            lat=stops_selected1.lat,
+            lon=stops_selected1.lon,
             mode='markers',
             marker=go.scattermapbox.Marker(
                 size=7,
                 color='rgb(108, 173, 245)',
                 opacity=0.7
             ),
-            text=stops_selected1['stop_code'],
+            text=stops_selected1.id,
             hoverinfo='text'
         ))
-        stops_selected2 = stops.loc[stops['stop_code'].isin(stops_dir2[1:])]
+        stops_selected2 = stops.loc[stops.id.isin(line_stops_dict[str(lineId)]['2']['stops'][1:])]
         fig.add_trace(go.Scattermapbox(
-            lat=stops_selected2['geometry'].y,
-            lon=stops_selected2['geometry'].x,
+            lat=stops_selected2.lat,
+            lon=stops_selected2.lon,
             mode='markers',
             marker=go.scattermapbox.Marker(
                 size=7,
                 color='rgb(243, 109, 90)',
                 opacity=0.7
             ),
-            text=stops_selected2['stop_code'],
+            text=stops_selected2.id,
             hoverinfo='text'
         ))
-
-        #Plot the lines in soft color
-        for index, row in route_lines.loc[route_lines['line_id']==lineId].iterrows():
-            line = row['geometry']
-            x_coords = []
-            y_coords = []
-            for coords in list(line.coords) :
-                x_coords.append(coords[0])
-                y_coords.append(coords[1])
-
-            if row['direction'] == '1':
-                color = 'rgb(108, 173, 245)'
-            else :
-                color = 'rgb(243, 109, 90)'
-
+        #Add lines to the figure
+        for line in [line1,line2] :
+            color = 'rgb(108, 173, 245)' if line.iloc[0].direction == 1 else 'rgb(243, 109, 90)'
             fig.add_trace(go.Scattermapbox(
-                lat=y_coords,
-                lon=x_coords,
+                lat=line.lat,
+                lon=line.lon,
                 mode='lines',
-                line=dict(width=1, color=color),
-                text='Línea : {}-{}'.format(row['line_id'],row['direction']),
+                line=dict(width=1.5, color=color),
+                text='Línea : {}-{}'.format(lineId,line.iloc[0].direction),
                 hoverinfo='text'
             ))
+
         #And set the figure layout
         fig.update_layout(
-            title='Given TIME POSITION OF THE BUSES OF LINE {}'.format(lineId),
+            title='REAL TIME POSITION OF THE BUSES OF LINE {}'.format(lineId),
             height=500,
             margin=dict(r=0, l=0, t=0, b=0),
             hovermode='closest',
