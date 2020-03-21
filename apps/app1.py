@@ -21,8 +21,8 @@ from app import app
 
 
 # WE LOAD THE DATA
-stops = pd.read_json('M6Data/stops.json')
-lines_shapes = pd.read_json('M6Data/lines_shapes.json')
+stops = pd.read_csv('M6Data/stops.csv')
+lines_shapes = pd.read_csv('M6Data/lines_shapes.csv')
 with open('M6Data/line_stops_dict.json', 'r') as f:
     line_stops_dict = json.load(f)
 
@@ -267,7 +267,7 @@ def get_arrival_time_data_of_line(line1,line2,accessToken) :
     keys = ['bus','line','direction','stop','isHead','destination','deviation','estimateArrive','DistanceBus']
 
     #List with all the stops in both directions
-    stop_codes = list(set(line_stops_dict[line_id]['1']['stops'] + line_stops_dict[line_id]['2']['stops']))
+    stop_codes = list(set(line_stops_dict[line_id]['1'] + line_stops_dict[line_id]['2']))
 
     #Function to perform the requests asynchronously, performing them concurrently would be too slow
     async def get_data_asynchronous() :
@@ -306,7 +306,7 @@ def get_arrival_time_data_of_line(line1,line2,accessToken) :
                     given_lons.append(bus['geometry']['coordinates'][0])
                     given_lats.append(bus['geometry']['coordinates'][1])
                     #We calculate the bus position depending on the direction it belongs to
-                    if bus['stop'] in line_stops_dict[line_id]['1']['stops'][1:] :
+                    if bus['stop'] in line_stops_dict[line_id]['1'][1:] :
                         bus['direction'] = '1'
                         calc_lon,calc_lat = point_by_distance_on_line(line1,bus['DistanceBus'],stop.lat,stop.lon)
                         calc_lons.append(calc_lon)
@@ -458,7 +458,7 @@ def update_graph_live(lineId_value,n_intervals):
             ))
 
         #Add the stops to the figure
-        stops_selected1 = stops.loc[stops.id.isin(line_stops_dict[str(lineId)]['1']['stops'][1:])]
+        stops_selected1 = stops.loc[stops.id.isin(line_stops_dict[str(lineId)]['1'][1:])]
         fig.add_trace(go.Scattermapbox(
             lat=stops_selected1.lat,
             lon=stops_selected1.lon,
@@ -471,7 +471,7 @@ def update_graph_live(lineId_value,n_intervals):
             text=stops_selected1.id,
             hoverinfo='text'
         ))
-        stops_selected2 = stops.loc[stops.id.isin(line_stops_dict[str(lineId)]['2']['stops'][1:])]
+        stops_selected2 = stops.loc[stops.id.isin(line_stops_dict[str(lineId)]['2'][1:])]
         fig.add_trace(go.Scattermapbox(
             lat=stops_selected2.lat,
             lon=stops_selected2.lon,

@@ -12,8 +12,8 @@ import datetime
 from app import app
 
 # WE LOAD THE DATA
-stops = pd.read_json('M6Data/stops.json')
-lines_shapes = pd.read_json('M6Data/lines_shapes.json')
+stops = pd.read_csv('M6Data/stops.csv')
+lines_shapes = pd.read_csv('M6Data/lines_shapes.csv')
 with open('M6Data/line_stops_dict.json', 'r') as f:
     line_stops_dict = json.load(f)
 
@@ -73,9 +73,9 @@ def update_lines_graph(lineIds_value):
             for lineId in lineIds :
                 if line_stops_dict[lineId] != None :
                     if line_stops_dict[lineId]['1'] != None :
-                        stops_of_lines = stops_of_lines + line_stops_dict[lineId]['1']['stops']
+                        stops_of_lines = stops_of_lines + line_stops_dict[lineId]['1']
                     if line_stops_dict[lineId]['2'] != None :
-                        stops_of_lines = stops_of_lines + line_stops_dict[lineId]['2']['stops']
+                        stops_of_lines = stops_of_lines + line_stops_dict[lineId]['2']
 
             stops_of_lines = list(set(stops_of_lines))
             stops_selected = stops.loc[stops.id.isin(stops_of_lines)]

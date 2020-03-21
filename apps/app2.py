@@ -20,8 +20,8 @@ from datetime import timedelta
 from app import app
 
 # WE LOAD THE DATA
-stops = pd.read_json('M6Data/stops.json')
-lines_shapes = pd.read_json('M6Data/lines_shapes.json')
+stops = pd.read_csv('M6Data/stops.csv')
+lines_shapes = pd.read_csv('M6Data/lines_shapes.csv')
 with open('M6Data/line_stops_dict.json', 'r') as f:
     line_stops_dict = json.load(f)
 
@@ -597,7 +597,7 @@ def update_positions(rows,time_value):
                         text='{}-{}-{}'.format(line,bus,destination),
                         hoverinfo='text'
                     ))
-                    
+
         #Set figure layout
         fig_buses_trayectory.update_layout(
             title='Trayectory of buses until selected time',
