@@ -10,6 +10,8 @@ import pandas as pd
 import json
 
 import plotly.graph_objects as go
+import plotly.io as pio
+
 import math
 
 import asyncio
@@ -52,7 +54,7 @@ layout = html.Div(className = '', children = [
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
 style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
 style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
-
+pio.templates.default = 'plotly_white'
 
 # API FUNCTIONS
 def requests_retry_session(retries=3,backoff_factor=0.3,status_forcelist=(500, 502, 504),session=None):
@@ -427,7 +429,7 @@ def update_graph_live(lineId_value,n_intervals):
         fig = go.Figure()
         #Add the bus points to the figure
         for bus in arrival_time_data.itertuples() :
-            if bus.direction == '1 :
+            if bus.direction == 1 :
                 color = 'blue'
             else :
                 color = 'red'

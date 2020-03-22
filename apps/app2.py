@@ -11,7 +11,8 @@ import pandas as pd
 import json
 
 import plotly.graph_objects as go
-from shapely import wkt
+import plotly.io as pio
+
 import math
 
 from datetime import datetime as dt
@@ -29,6 +30,7 @@ with open('M6Data/line_stops_dict.json', 'r') as f:
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
 style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
 style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
+pio.templates.default = 'plotly_white'
 
 #Load the buses dataframe and parse the dates ../../flash/EMTBuses/buses_data.csv
 buses_data = pd.read_csv(
@@ -187,7 +189,7 @@ layout = html.Div(className = '', children = [
                     value=25
                 )
             ]),
-            html.Div(className='box',id='figs-buses-trayectory')
+            html.Div(className='',id='figs-buses-trayectory')
         ])
     ])
 
@@ -368,20 +370,23 @@ def update_table(start_date,end_date,time_range,lines_selected,stops_selected,bu
                 ),
                 dash_table.DataTable(
                     id='table',
-                    columns=[{"name": i, "id": i} for i in buses_data_reduced.columns],
-                    data=buses_data_reduced.to_dict('records'),
+                    filter_action='native',
+                    sort_action='native',
                     page_size= 15,
                     style_table={'overflowX': 'scroll'},
+                    style_header={
+                        'color':'white',
+                        'backgroundColor': 'lightseagreen'
+                    },
                     style_cell={
-                        'minWidth': '0px', 'maxWidth': '180px',
+                        'padding': '3px',
+                        'width': 'auto',
+                        'textAlign': 'center',
                         'overflow': 'hidden',
                         'textOverflow': 'ellipsis',
                     },
-                    editable=True,
-                    filter_action="native",
-                    sort_action="native",
-                    sort_mode="multi",
-                    row_deletable=True
+                    columns=[{"name": i, "id": i} for i in buses_data_reduced.columns],
+                    data=buses_data_reduced.to_dict('records')
                 )
             ])
         ]
@@ -442,12 +447,12 @@ def update_graphs(rows):
 
             # Create and style traces
             for i in range(len(bus_times_splitted)) :
-                fig1.add_trace(go.Scatter(x=bus_times_splitted[i], y=bus_dists_splitted[i], name='{}-{}'.format(line,bus),
+                fig1.add_trace(go.Scatter(x=bus_times_splitted[i], y=bus_dists_splitted[i], mode='lines', name='{}-{}-{}'.format(line,bus,i),
                                          line=dict(width=1)))
-                fig2.add_trace(go.Scatter(x=bus_times_splitted[i], y=bus_etas_splitted[i], name='{}-{}'.format(line,bus),
+                fig2.add_trace(go.Scatter(x=bus_times_splitted[i], y=bus_etas_splitted[i], mode='lines', name='{}-{}-{}'.format(line,bus,i),
                                          line=dict(width=1)))
             for i in range(len(bus_etas_error_splitted)) :
-                fig3.add_trace(go.Scatter(x=bus_times_splitted[i], y=bus_etas_error_splitted[i], name='{}-{}'.format(line,bus),
+                fig3.add_trace(go.Scatter(x=bus_times_splitted[i], y=bus_etas_error_splitted[i], mode='lines', name='{}-{}-{}'.format(line,bus,i),
                                          line=dict(width=1)))
         # Edit the layout
         fig1.update_layout(title='Distance remaining for the buses heading stop {}'.format(first_stop),
@@ -463,18 +468,26 @@ def update_graphs(rows):
                            yaxis_title='ETA ERROR (minutes)')
 
         return [
-            dcc.Graph(
-                id='fig1',
-                figure=fig1
-            ),
-            dcc.Graph(
-                id='fig2',
-                figure=fig2
-            ),
-            dcc.Graph(
-                id='fig3',
-                figure=fig3
-            )
+            dcc.Tabs([
+                dcc.Tab(label='Time Remaining', children=[
+                    dcc.Graph(
+                        id='fig1',
+                        figure=fig1
+                    ),
+                ]),
+                dcc.Tab(label='Distance Remaining', children=[
+                    dcc.Graph(
+                        id='fig2',
+                        figure=fig2
+                    ),
+                ]),
+                dcc.Tab(label='ETA Error', children=[
+                    dcc.Graph(
+                        id='fig3',
+                        figure=fig3
+                    ),
+                ])
+            ])
         ]
     else :
         return 'Selected data is too large to represent. Select a smaller slice'

@@ -6,6 +6,7 @@ import pandas as pd
 import json
 
 import plotly.graph_objects as go
+import plotly.io as pio
 
 import datetime
 
@@ -39,6 +40,7 @@ layout = html.Div(className = '', children = [
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
 style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
 style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
+pio.templates.default = 'plotly_white'
 
 # CALLBACKS
 
