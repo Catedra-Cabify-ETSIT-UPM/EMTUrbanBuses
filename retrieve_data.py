@@ -1,9 +1,10 @@
 import pandas as pd
-import geopandas as gpd
 import json
+
 import re
 import os.path
 import random
+import math
 
 import time
 import datetime
@@ -17,11 +18,9 @@ from requests.packages.urllib3.util.retry import Retry
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
-from shapely.geometry import Point, LineString
-
 # WE LOAD THE DATA
-stops = gpd.read_file('M6Data/stops.json')
-route_lines = gpd.read_file('M6Data/route_lines.json')
+stops = pd.read_csv('M6Data/stops.csv')
+lines_shapes = pd.read_csv('M6Data/lines_shapes.csv')
 with open('M6Data/line_stops_dict.json', 'r') as f:
     line_stops_dict = json.load(f)
 
@@ -50,34 +49,64 @@ class RepeatedTimer(object):
         self._timer.cancel()
         self.is_running = False
 
-#Get bus estimated coords
-def point_by_distance_on_line (line, line_lenght, distance, origin_point) :
+# FUNCTIONS
+def find_nearest_row(df,lat,lon) :
+    """
+    Returns the row nearest to the coordinates passed in the dataframe
+
+        Parameters
+        ----------
+        df : dataframe
+            Dataframe where we want to find the row
+        lat: float
+        lon: float
+    """
+    min_dist_error = 1000000.0
+    for row in df.itertuples() :
+        error = math.sqrt(abs(row.lat-lat)+abs(row.lon-lon))
+        if  error < min_dist_error :
+            min_dist_error = error
+            nearest_row = row
+    return nearest_row
+
+def find_nearest_row_by_dist(df,dist_traveled) :
+    """
+    Returns the row nearest to the distance traveled passed in the dataframe
+
+        Parameters
+        ----------
+        df : dataframe
+            Dataframe where we want to find the row
+        dist_traveled : float
+    """
+    min_dist_error = 1000000.0
+    for row in df.itertuples() :
+        error = abs(row.dist_traveled-dist_traveled)
+        if  error < min_dist_error :
+            min_dist_error = error
+            nearest_row = row
+    return nearest_row
+
+def point_by_distance_on_line (line,distance,stop_lat,stop_lon) :
     """
     Returns the coordinates of the bus location
 
         Parameters
         ----------
-        line : LineString
-            The line that the bus belongs to
-        line_length : float
-            The length of the line
+        line: DataFrame
+            Points belonging to the requested line
         distance : float
-            The distance of the bus to the stop in kilometers
-        origin_point : Point
-            The location of the bus stop
+            Distance of the bus to the stop in meters
+        stop_lat : float
+        stop_lon : float
     """
-    
-    #First we calculate the normalized distance of the bus from the start of the line
-    #by substracting the distance of the bus to the stop to the distance of the stop to the start of the line
-    #which is returned by the project method of the shapely module
-    normalized_distance = line.project(origin_point,normalized=True) - distance/line_lenght
-    
-    #Then we get the the coordinates of the point that is at the normalized distance obtained 
-    #before from the start of the line with the interpolate method
-    interpolated_point = line.interpolate(normalized_distance,normalized=True)
-    
+
+    nearest_row_to_stop = find_nearest_row(line,stop_lat,stop_lon)
+    dist_traveled_of_bus = nearest_row_to_stop.dist_traveled - distance
+    nearest_row_to_distance = find_nearest_row_by_dist(line,dist_traveled_of_bus)
+
     #And we return the coordinates of the point
-    return (interpolated_point.x,interpolated_point.y)
+    return nearest_row_to_distance.lon,nearest_row_to_distance.lat
 
 #Check if time is inside range
 def time_in_range(start, end, x):
@@ -108,7 +137,7 @@ def requests_retry_session(retries=3,backoff_factor=0.3,status_forcelist=(500, 5
 def get_access_token(email,password) :
     '''
     Returns the access token of the EMT Madrid API
-        
+
         Parameters
         ----------
         email : string
@@ -148,23 +177,21 @@ def get_arrival_times(stopId,accessToken) :
 
         Parameters
         ----------
-        lineId : string
-            The line id
         stopId : string
             The stop code
         accessToken: string
             The accessToken obtained in the login
     """
-    
+
     #We build the body for the request
     body = {
         'cultureInfo': 'EN',
-        'Text_StopRequired_YN': 'Y',
+        'Text_StopRequired_YN': 'N',
         'Text_EstimationsRequired_YN': 'Y',
         'Text_IncidencesRequired_YN': 'N',
         'DateTime_Referenced_Incidencies_YYYYMMDD':'20200130'
     }
-    
+
     #And we perform the request
     try:
         response = requests_retry_session().post(
@@ -191,73 +218,39 @@ def get_arrival_data(requested_lines) :
         requested_lines : list
             List with the desired line ids
     """
-        
+
     #We get the list of stops to ask for
     stops_of_lines = []
-    for lineId in requested_lines :
-        if line_stops_dict[lineId] != None :
-            if line_stops_dict[lineId]['1'] != None :
-                stops_of_lines = stops_of_lines + line_stops_dict[lineId]['1']['stops']
-            if line_stops_dict[lineId]['2'] != None :
-                stops_of_lines = stops_of_lines + line_stops_dict[lineId]['2']['stops']
+    for line_id in requested_lines :
+        line_id = str(line_id)
+        if line_stops_dict[line_id] != None :
+            if line_stops_dict[line_id]['1'] != None :
+                stops_of_lines = stops_of_lines + line_stops_dict[line_id]['1']
+            if line_stops_dict[line_id]['2'] != None :
+                stops_of_lines = stops_of_lines + line_stops_dict[line_id]['2']
 
+    #List of different stops
     stops_of_lines = list(set(stops_of_lines))
-     
-    #Prepair the lineIds for the request
-    if requested_lines == ['1','82','91','92','99','132'] :
-        requested_lines_alt = ['1','82','F','G','U','132']
-    elif requested_lines == ['1','82','132'] :
-        requested_lines_alt = ['1','82','132']
-    elif requested_lines == ['502','506'] :
-        requested_lines_alt = ['N2','N6']
-        
-    #We get the selected lines from the dataframe
-    lines_selected = route_lines.loc[route_lines['line_id'].isin(requested_lines)]
-    
-    #Get the line rows
-    line1_dir1 = lines_selected.loc[(route_lines['line_id']=='1')&(route_lines['direction']=='1')]
-    line1_dir2 = lines_selected.loc[(route_lines['line_id']=='1')&(route_lines['direction']=='2')]
-        
-    line82_dir1 = lines_selected.loc[(route_lines['line_id']=='82')&(route_lines['direction']=='1')]
-    line82_dir2 = lines_selected.loc[(route_lines['line_id']=='82')&(route_lines['direction']=='2')]
-        
-    line91_dir1 = lines_selected.loc[(route_lines['line_id']=='91')&(route_lines['direction']=='1')]
-    line91_dir2 = lines_selected.loc[(route_lines['line_id']=='91')&(route_lines['direction']=='2')]
-        
-    line92_dir1 = lines_selected.loc[(route_lines['line_id']=='92')&(route_lines['direction']=='1')]
-    line92_dir2 = lines_selected.loc[(route_lines['line_id']=='92')&(route_lines['direction']=='2')]
-        
-    line99_dir1 = lines_selected.loc[(route_lines['line_id']=='99')&(route_lines['direction']=='1')]
-    line99_dir2 = lines_selected.loc[(route_lines['line_id']=='99')&(route_lines['direction']=='2')]
-        
-    line132_dir1 = lines_selected.loc[(route_lines['line_id']=='132')&(route_lines['direction']=='1')]
-    line132_dir2 = lines_selected.loc[(route_lines['line_id']=='132')&(route_lines['direction']=='2')]
-        
-    line502_dir1 = lines_selected.loc[(route_lines['line_id']=='502')&(route_lines['direction']=='1')]
-    line502_dir2 = lines_selected.loc[(route_lines['line_id']=='502')&(route_lines['direction']=='2')]
-        
-    line506_dir1 = lines_selected.loc[(route_lines['line_id']=='506')&(route_lines['direction']=='1')]
-    line506_dir2 = lines_selected.loc[(route_lines['line_id']=='506')&(route_lines['direction']=='2')]
-        
+
     #The keys for the dataframe that is going to be built
     keys = ['bus','line','stop','datetime','isHead','destination','deviation','estimateArrive','DistanceBus','request_time']
-    
+
     #Function to perform the requests asynchronously, performing them concurrently would be too slow
     async def get_data_asynchronous() :
         global account_index
         global accessToken
         global out_of_hits
-        
+
         row_list = []
-        points_list = []
-        real_coords_list = []
-        
+        calc_lats,calc_lons = [],[]
+        given_lats,given_lons = [],[]
+
         #Información de la recogida de datos
         n_ok_answers = 0
         n_not_ok_answers = 0
-        
+
         #We set the number of workers that is going to take care about the requests
-        with ThreadPoolExecutor(max_workers=30) as executor:
+        with ThreadPoolExecutor(max_workers=50) as executor:
             #We create a loop object
             loop = asyncio.get_event_loop()
             #And a list of tasks to be performed by the loop
@@ -273,8 +266,8 @@ def get_arrival_data(requested_lines) :
             random.shuffle(tasks)
             #And finally we perform the tasks and gather the information returned by them into two lists
             for response in await asyncio.gather(*tasks) :
-                if not response == 'Error' : 
-                    if response.status_code == 200 : 
+                if not response == 'Error' :
+                    if response.status_code == 200 :
                         arrival_data = response.json()
                         n_ok_answers = n_ok_answers + 1
                         if arrival_data['code'] == '98':
@@ -286,7 +279,7 @@ def get_arrival_data(requested_lines) :
                                 return None
                             else :
                                 print('Appending data gathered before end of hits\n')
-                                return [row_list,points_list,real_coords_list,n_ok_answers,n_not_ok_answers]
+                                return row_list, calc_lats, calc_lons, given_lats, given_lons, n_ok_answers, n_not_ok_answers
                     else :
                         #If the response isnt okey we pass to the next iteration
                         n_not_ok_answers = n_not_ok_answers + 1
@@ -295,104 +288,90 @@ def get_arrival_data(requested_lines) :
                     #If the response isnt okey we pass to the next iteration
                     n_not_ok_answers = n_not_ok_answers + 1
                     continue
-                
+
                 lapsed_time = int(re.search('lapsed: (.*) millsecs', arrival_data['description']).group(1))
                 date_time = datetime.datetime.strptime(arrival_data['datetime'], '%Y-%m-%dT%H:%M:%S.%f')
-                stop_coords = Point(arrival_data['data'][0]['StopInfo'][0]['geometry']['coordinates'])
-                
-                #We get the buses data 
+
+                #We get the buses data
                 buses_data = arrival_data['data'][0]['Arrive']
-                
+                stop = stops.loc[stops.id == int(buses_data[0]['stop'])]
                 for bus in buses_data :
-                    if bus['line'] in requested_lines_alt :
-                        #Select the line for the calc
-                        if bus['line'] == '1' :
-                            line_dir1 = line1_dir1
-                            line_dir2 = line1_dir2
-                        elif bus['line'] == '82' :
-                            line_dir1 = line82_dir1
-                            line_dir2 = line82_dir2
-                        elif bus['line'] == 'F' :
-                            line_dir1 = line91_dir1
-                            line_dir2 = line91_dir2
-                        elif bus['line'] == 'G' :
-                            line_dir1 = line92_dir1
-                            line_dir2 = line92_dir2
-                        elif bus['line'] == 'U' :
-                            line_dir1 = line99_dir1
-                            line_dir2 = line99_dir2
-                        elif bus['line'] == '132' :
-                            line_dir1 = line132_dir1
-                            line_dir2 = line132_dir2
-                        elif bus['line'] == 'N2' :
-                            line_dir1 = line502_dir1
-                            line_dir2 = line502_dir2
-                        elif bus['line'] == 'N6' :
-                            line_dir1 = line506_dir1
-                            line_dir2 = line506_dir2
-                        
-                        #Real coordinates provided by the API
-                        real_coords_list.append(Point(bus['geometry']['coordinates']))
+                    #Get the line rows for each direction
+                    line1 = lines_shapes.loc[(lines_shapes.line_sn==bus['line'])&(lines_shapes.direction==1)]
+                    line2 = lines_shapes.loc[(lines_shapes.line_sn==bus['line'])&(lines_shapes.direction==2)]
+
+                    if line1.iloc[0].line_id in requested_lines :
+                        #Given coordinates provided by the API
+                        given_lons.append(bus['geometry']['coordinates'][0])
+                        given_lats.append(bus['geometry']['coordinates'][1])
+
                         #We calculate the bus position depending on the direction it belongs to
                         dests_1 = ['HOSPITAL LA PAZ','CIUDAD UNIVERSITARIA','PARANINFO','PITIS','PROSPERIDAD','VALDEBEBAS','LAS ROSAS']
                         if bus['destination'] in dests_1 :
-                            points_list.append(Point(point_by_distance_on_line(line_dir1['geometry'],line_dir1['dist'],bus['DistanceBus']/1000,stop_coords)))
+                            calc_lon,calc_lat = point_by_distance_on_line(line1,bus['DistanceBus'],stop.lat,stop.lon)
+                            calc_lons.append(calc_lon)
+                            calc_lats.append(calc_lat)
                         else :
-                            points_list.append(Point(point_by_distance_on_line(line_dir2['geometry'],line_dir2['dist'],bus['DistanceBus']/1000,stop_coords)))
+                            calc_lon,calc_lat = point_by_distance_on_line(line2,bus['DistanceBus'],stop.lat,stop.lon)
+                            calc_lons.append(calc_lon)
+                            calc_lats.append(calc_lat)
                         bus['datetime'] = date_time
                         bus['request_time'] = lapsed_time
                         values = [bus[key] for key in keys]
                         row_list.append(dict(zip(keys, values)))
-                        
-                    
-        return [row_list,points_list,real_coords_list,n_ok_answers,n_not_ok_answers]
-    
+
+
+        return row_list, calc_lats, calc_lons, given_lats, given_lons,n_ok_answers,n_not_ok_answers
+
     #We declare the loop and call it, then we run it until it is complete
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     future = asyncio.ensure_future(get_data_asynchronous())
     loop.run_until_complete(future)
-    
+
     #And once it is completed we gather the information returned by it like this
     future_result = future.result()
     if future_result == None :
         return None
     else :
         row_list = future_result[0]
-        points_list = future_result[1]
-        real_coords_list = future_result[2]
-        n_ok_answers = future_result[3]
-        n_not_ok_answers = future_result[4]
-        
+        calc_lats = future_result[1]
+        calc_lons = future_result[2]
+        given_lats = future_result[3]
+        given_lons = future_result[4]
+        n_ok_answers = future_result[5]
+        n_not_ok_answers = future_result[6]
+
         #We create the dataframe of the buses
         buses_df = pd.DataFrame(row_list, columns=keys)
-        final_coords_lat_list = []
-        final_coords_lon_list = []
-        real_coords = []
-        #Use the real coords if they exist
-        for i in range(0,len(points_list)) :
-            if (real_coords_list[i].y!=0)&(real_coords_list[i].x!=0) :
-                final_coords_lat_list.append(real_coords_list[i].y)
-                final_coords_lon_list.append(real_coords_list[i].x)
-                real_coords.append(1)
+        final_lats,final_lons = [],[]
+        given_coords = []
+        #Use the given coords if they exist
+        for i in range(len(calc_lats)) :
+            if (given_lats[i]!=0)&(given_lons[i]!=0) :
+                final_lats.append(given_lats[i])
+                final_lons.append(given_lons[i])
+                given_coords.append(1)
             else :
-                final_coords_lat_list.append(points_list[i].y)
-                final_coords_lon_list.append(points_list[i].x)
-                real_coords.append(0)
+                final_lats.append(calc_lats[i])
+                final_lons.append(calc_lons[i])
+                given_coords.append(0)
+
         #We add the coord columns to the dataframe
-        buses_df['real_coords'] = real_coords
-        buses_df['lat'] = final_coords_lat_list
-        buses_df['lon'] = final_coords_lon_list
+        buses_df['given_coords'] = given_coords
+        buses_df['lat'] = final_lats
+        buses_df['lon'] = final_lons
+
         #And we append the data to the csv
         f='buses_data.csv'
         if os.path.isfile(f) :
             buses_df.to_csv(f, mode='a', header=False)
         else :
             buses_df.to_csv(f, mode='a', header=True)
-        
+
         print('There were {} ok responses and {} not okey responses - {}'.format(n_ok_answers,n_not_ok_answers,datetime.datetime.now()))
         print('{} new rows appended to {}\n'.format(buses_df.shape[0],f))
-        
+
 
 #Global vars
 from api_credentials import emails,passwords,XClientId,passKey
@@ -404,21 +383,21 @@ def main():
     global account_index
     global accessToken
     global out_of_hits
-    
+
     rt_started = False
-    
+
     #Initial value of accessToken
     for i in range(0,5) :
         account_index = i
-        
+
         #Try until we get response to the login without errors
         json_response = 'Error'
-        while json_response == 'Error' : 
+        while json_response == 'Error' :
             json_response = get_access_token(emails[account_index],passwords[account_index])
-                        
+
         if json_response['code'] == '98' :
             print('Account {} has no hits available\n'.format(account_index))
-            if i == 4 : 
+            if i == 4 :
                 print('None of the accounts has hits available\n')
                 i = 0
             else :
@@ -428,33 +407,33 @@ def main():
             print('Making requests from account {} - accessToken : {}\n'.format(account_index,accessToken))
             out_of_hits = False
             break
-    
+
     #Normal buses hours range
     start_time_day = datetime.time(7,0,0)
     end_time_day = datetime.time(23,0,0)
     #Night buses hours range
     start_time_night = datetime.time(0,0,0)
     end_time_night = datetime.time(5,30,0)
-    
+
     while True :
         #Retrieve data every interval seconds if we are between 6:00 and 23:30
         now = datetime.datetime.now()
-        
+
         #If we have lost all the hits
         if out_of_hits :
             #Wait until we have hits available again
             if ( (now.weekday() in [0,1,2,3,4]) & (time_in_range(start_time_day,end_time_day,now.time())) ) | (now.weekday() in [5,6]) :
                 for i in range(0,5) :
                     account_index = i
-                    
+
                     #Try until we get response to the login without errors
                     json_response = 'Error'
-                    while json_response == 'Error' : 
+                    while json_response == 'Error' :
                         json_response = get_access_token(emails[account_index],passwords[account_index])
-                        
+
                     if json_response['code'] == '98' :
                         print('Account {} has no hits available\n'.format(account_index))
-                        if i == 4 : 
+                        if i == 4 :
                             print('None of the accounts has hits available - Sleeping 10 minutes - {}\n'.format(datetime.datetime.now()))
                             i = 0
                             if rt_started :
@@ -474,36 +453,36 @@ def main():
                 time.sleep(600)
             #We pass directly to next iteration
             continue
-        
+
         #If we are not in the weekend
         if now.weekday() in [0,1,2,3,4] :
             #Retrieve data from lines 1,82,91,92,99,132 - 207 Stops
             if time_in_range(start_time_day,end_time_day,now.time()) :
                 if not rt_started :
-                    print('Retrieve data from lines 1,82,91,92,99,132 - 207 Stops - {}\n'.format(datetime.datetime.now()))
-                    requested_lines = ['1','82','91','92','99','132']
+                    print('Retrieve data from lines 1,82,91(F),92(G),99(U),132 - 207 Stops - {}\n'.format(datetime.datetime.now()))
+                    requested_lines = [1,82,91,92,99,132]
                     rt = RepeatedTimer(55, get_arrival_data, requested_lines)
                     rt_started = True
             else :
                 #Stop timer if it exists
                 if rt_started :
-                    print('Stop retrieving data from lines 1,82,91,92,99,132 - 207 Stops - {}\n'.format(datetime.datetime.now()))
+                    print('Stop retrieving data from lines 1,82,91(F),92(G),99(U),132  - 207 Stops - {}\n'.format(datetime.datetime.now()))
                     rt.stop()
                     rt_started = False
         #If we are in Saturday or Sunday
-        else : 
+        else :
             #Retrieve data from lines 69,82,132 - 185 Stops
             if time_in_range(start_time_day,end_time_day,now.time()) :
                 if not rt_started :
-                    print('Retrieve data from lines 69,82,132 - 185 Stops - {}\n'.format(datetime.datetime.now()))
-                    requested_lines = ['1','82','132']
+                    print('Retrieve data from lines 1,82,132 - 185 Stops - {}\n'.format(datetime.datetime.now()))
+                    requested_lines = [1,82,132]
                     rt = RepeatedTimer(55, get_arrival_data, requested_lines)
                     rt_started = True
             #Retrieve data from lines 502,506 - 131 Stops
             elif time_in_range(start_time_night,end_time_night,now.time()) :
                 if not rt_started :
                     print('Retrieve data from lines 502,506 - 131 Stops - {}\n'.format(datetime.datetime.now()))
-                    requested_lines = ['502','506']
+                    requested_lines = [502,506]
                     rt = RepeatedTimer(70, get_arrival_data, requested_lines)
                     rt_started = True
             else :
@@ -511,10 +490,10 @@ def main():
                 if rt_started :
                     print('Stop retrieving data for weekends - {}\n'.format(datetime.datetime.now()))
                     rt.stop()
-                    rt_started = False 
-                    
+                    rt_started = False
+
         #Wait 10 seconds till next loop (no need to run the loop faster)
         time.sleep(10)
-        
+
 if __name__== "__main__":
     main()

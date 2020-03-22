@@ -307,12 +307,12 @@ def get_arrival_time_data_of_line(line1,line2,accessToken) :
                     given_lats.append(bus['geometry']['coordinates'][1])
                     #We calculate the bus position depending on the direction it belongs to
                     if bus['stop'] in line_stops_dict[line_id]['1'][1:] :
-                        bus['direction'] = '1'
+                        bus['direction'] = 1
                         calc_lon,calc_lat = point_by_distance_on_line(line1,bus['DistanceBus'],stop.lat,stop.lon)
                         calc_lons.append(calc_lon)
                         calc_lats.append(calc_lat)
                     else :
-                        bus['direction'] = '2'
+                        bus['direction'] = 2
                         calc_lon,calc_lat = point_by_distance_on_line(line2,bus['DistanceBus'],stop.lat,stop.lon)
                         calc_lons.append(calc_lon)
                         calc_lats.append(calc_lat)
@@ -427,7 +427,7 @@ def update_graph_live(lineId_value,n_intervals):
         fig = go.Figure()
         #Add the bus points to the figure
         for bus in arrival_time_data.itertuples() :
-            if bus.direction == '1' :
+            if bus.direction == '1 :
                 color = 'blue'
             else :
                 color = 'red'
