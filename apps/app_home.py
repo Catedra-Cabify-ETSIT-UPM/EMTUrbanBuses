@@ -157,12 +157,10 @@ def update_lines_graph(lineIds_value):
                     'Selected lines map',
                     className = 'subtitle is-4'
                 ),
-                dcc.Loading(type = 'graph', children = [
-                    dcc.Graph(
-                        id = 'graph',
-                        figure = fig
-                    )
-                ]),
+                dcc.Graph(
+                    id = 'graph',
+                    figure = fig
+                ),
                 html.H2(
                     'Number of different stops involved : {}'.format(len(stops_of_lines)),
                     className = 'subtitle is-5'

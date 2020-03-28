@@ -25,8 +25,8 @@ from app import app
 # WE LOAD THE DATA
 stops = pd.read_csv('M6Data/stops.csv')
 lines_shapes = pd.read_csv('M6Data/lines_shapes.csv')
-with open('M6Data/line_stops_dict.json', 'r') as f:
-    line_stops_dict = json.load(f)
+with open('M6Data/lines_collected_dict.json', 'r') as f:
+    lines_collected_dict = json.load(f)
 
 
 layout = html.Div(className = '', children = [
@@ -36,14 +36,14 @@ layout = html.Div(className = '', children = [
         html.Span('Line ID: ', className = 'tag is-light is-large'),
         dcc.Dropdown(
             id="lineId-select",
-            options=[{"label": i, "value": i} for i in line_stops_dict.keys()],
+            options=[{"label": i, "value": i} for i in lines_collected_dict.keys()],
             value='1',
             searchable=True
         ),
         html.Div(className='box',id='live-update-graph'),
         dcc.Interval(
             id='interval-component',
-            interval=10*1000, # in milliseconds
+            interval=7*1000, # in milliseconds
             n_intervals=0
         )
     ])
@@ -111,8 +111,10 @@ def get_access_token(email,password) :
         else :
             return json_response['data'][0]['accessToken']
 
-    except requests.exceptions.RequestException as e:
-        print(e + '\n')
+    except e:
+        print('There was an error in the request \n')
+        print(e)
+        print('\n')
         return 'Error'
 
 def get_arrival_times(lineId,stopId,accessToken) :
@@ -151,8 +153,10 @@ def get_arrival_times(lineId,stopId,accessToken) :
         )
         #Return the response if we received it ok
         return response
-    except requests.exceptions.RequestException as e:
-        print(e + '\n')
+    except e:
+        print('There was an error in the request \n')
+        print(e)
+        print('\n')
         return 'Error'
 
 
@@ -190,27 +194,25 @@ def haversine(coord1, coord2):
 
     return 2*R*math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-def find_nearest_row(df,lat,lon) :
-    """
-    Returns the row nearest to the coordinates passed in the dataframe
+def calculate_coords(df,stop_id,dist_to_stop) :
+    '''
+    Returns the calculated coordinates of the bus
 
-        Parameters
+    Parameters
         ----------
         df : dataframe
-            Dataframe where we want to find the row
-        lat: float
-        lon: float
-    """
-    min_dist_error = 1000000.0
-    for row in df.itertuples() :
-        error = math.sqrt(abs(row.lat-lat)+abs(row.lon-lon))
-        if  error < min_dist_error :
-            min_dist_error = error
-            nearest_row = row
-    return nearest_row
+            Dataframe where we want to find the calculated coords
+        stop : str
+        dist_traveled : float
+    '''
+    line_sn = df.iloc[0].line_sn
+    direction = str(df.iloc[0].direction)
+    bus_distance = int(lines_collected_dict[line_sn][direction]['distances'][str(stop_id)]) - dist_to_stop
+    nearest_row = find_nearest_row_by_dist(df,bus_distance)
+    return nearest_row.lon, nearest_row.lat
 
 def find_nearest_row_by_dist(df,dist_traveled) :
-    """
+    '''
     Returns the row nearest to the distance traveled passed in the dataframe
 
         Parameters
@@ -218,35 +220,18 @@ def find_nearest_row_by_dist(df,dist_traveled) :
         df : dataframe
             Dataframe where we want to find the row
         dist_traveled : float
-    """
+    '''
     min_dist_error = 1000000.0
-    for row in df.itertuples() :
-        error = abs(row.dist_traveled-dist_traveled)
-        if  error < min_dist_error :
-            min_dist_error = error
-            nearest_row = row
+    df_reduced = df.loc[(df.dist_traveled>dist_traveled-100)&(df.dist_traveled<dist_traveled+100)]
+    if df_reduced.shape[0]!=0:
+        for row in df_reduced.itertuples() :
+            error = abs(row.dist_traveled-dist_traveled)
+            if  error < min_dist_error :
+                min_dist_error = error
+                nearest_row = row
+    else :
+        nearest_row = df.iloc[0]
     return nearest_row
-
-def point_by_distance_on_line (line,distance,stop_lat,stop_lon) :
-    """
-    Returns the coordinates of the bus location
-
-        Parameters
-        ----------
-        line: DataFrame
-            Points belonging to the requested line
-        distance : float
-            Distance of the bus to the stop in meters
-        stop_lat : float
-        stop_lon : float
-    """
-
-    nearest_row_to_stop = find_nearest_row(line,stop_lat,stop_lon)
-    dist_traveled_of_bus = nearest_row_to_stop.dist_traveled - distance
-    nearest_row_to_distance = find_nearest_row_by_dist(line,dist_traveled_of_bus)
-
-    #And we return the coordinates of the point
-    return nearest_row_to_distance.lon,nearest_row_to_distance.lat
 
 def get_arrival_time_data_of_line(line1,line2,accessToken) :
     """
@@ -266,16 +251,14 @@ def get_arrival_time_data_of_line(line1,line2,accessToken) :
     line_sn = line1.iloc[0].line_sn
 
     #The keys for the dataframe that is going to be built
-    keys = ['bus','line','direction','stop','isHead','destination','deviation','estimateArrive','DistanceBus']
+    keys = ['bus','line','direction','stop','isHead','destination','deviation','estimateArrive','DistanceBus','given_coords','lat','lon','calc_lat','calc_lon','distance']
 
     #List with all the stops in both directions
-    stop_codes = list(set(line_stops_dict[line_id]['1'] + line_stops_dict[line_id]['2']))
+    stop_codes = list(set(lines_collected_dict[line_sn]['1']['stops'] + lines_collected_dict[line_sn]['2']['stops']))
 
     #Function to perform the requests asynchronously, performing them concurrently would be too slow
     async def get_data_asynchronous() :
         row_list = []
-        calc_lats,calc_lons = [],[]
-        given_lats,given_lons = [],[]
 
         #We set the number of workers that is going to take care about the requests
         with ThreadPoolExecutor(max_workers=10) as executor:
@@ -302,27 +285,25 @@ def get_arrival_time_data_of_line(line1,line2,accessToken) :
 
                 #We get the buses data and stop coords
                 buses_data = arrival_data['data'][0]['Arrive']
-                stop = stops.loc[stops.id == int(buses_data[0]['stop'])]
                 for bus in buses_data :
                     #Given coordinates provided by the API
-                    given_lons.append(bus['geometry']['coordinates'][0])
-                    given_lats.append(bus['geometry']['coordinates'][1])
+                    bus['lon'],bus['lat'] = bus['geometry']['coordinates'][0],bus['geometry']['coordinates'][1]
+                    if bus['lat']*bus['lon'] == 0 :
+                        bus['given_coords'] = 0
+                    else :
+                        bus['given_coords'] = 1
                     #We calculate the bus position depending on the direction it belongs to
-                    if bus['stop'] in line_stops_dict[line_id]['1'][1:] :
+                    if bus['destination'] == lines_collected_dict[line_sn]['destinations'][1] :
                         bus['direction'] = 1
-                        calc_lon,calc_lat = point_by_distance_on_line(line1,bus['DistanceBus'],stop.lat,stop.lon)
-                        calc_lons.append(calc_lon)
-                        calc_lats.append(calc_lat)
+                        bus['calc_lon'],bus['calc_lat'] = calculate_coords(line1,bus['stop'],bus['DistanceBus'])
                     else :
                         bus['direction'] = 2
-                        calc_lon,calc_lat = point_by_distance_on_line(line2,bus['DistanceBus'],stop.lat,stop.lon)
-                        calc_lons.append(calc_lon)
-                        calc_lats.append(calc_lat)
-
+                        bus['calc_lon'],bus['calc_lat'] = calculate_coords(line2,bus['stop'],bus['DistanceBus'])
+                    bus['distance'] = haversine((bus['calc_lat'],bus['calc_lon']),(bus['lat'], bus['lon']))
                     values = [bus[key] for key in keys]
                     row_list.append(dict(zip(keys, values)))
 
-        return row_list, calc_lats, calc_lons, given_lats, given_lons
+        return row_list
 
     #We declare the loop and call it, then we run it until it is complete
     loop = asyncio.new_event_loop()
@@ -335,30 +316,10 @@ def get_arrival_time_data_of_line(line1,line2,accessToken) :
     if future_result == 'Hits of account spent' :
         return 'Hits of account spent'
     else :
-        row_list = future_result[0]
-        calc_lats = future_result[1]
-        calc_lons = future_result[2]
-        given_lats = future_result[3]
-        given_lons = future_result[4]
+        row_list = future_result
 
         #We create the dataframe of the buses
         buses_df = pd.DataFrame(row_list, columns=keys)
-        buses_list = [str(row.bus)+'-('+str(row.stop)+')' for row in buses_df.itertuples()]
-        final_lats,final_lons = [],[]
-        #Use the given coords if they exist
-        for i in range(len(calc_lats)) :
-            if (given_lats[i]!=0)&(given_lons[i]!=0) :
-                final_lats.append(given_lats[i])
-                final_lons.append(given_lons[i])
-            else :
-                final_lats.append(calc_lats[i])
-                final_lons.append(calc_lons[i])
-
-        buses_df['lat'] = final_lats
-        buses_df['lon'] = final_lons
-
-        buses_df['calc_lat'] = calc_lats
-        buses_df['calc_lon'] = calc_lons
 
         #And then we get only the rows where each bus is closer to a stop (lower DistanceBus attrib)
         frames = []
@@ -367,10 +328,10 @@ def get_arrival_time_data_of_line(line1,line2,accessToken) :
             buses_df_reduced = buses_df.loc[(buses_df.bus==bus_id)]
             final_rows.append(buses_df_reduced.loc[buses_df_reduced.DistanceBus==buses_df_reduced.DistanceBus.min()].iloc[0])
 
-        buses_df_unique = pd.DataFrame(final_rows, columns=keys+['lat','lon','calc_lat','calc_lon'])
-
+        buses_df_unique = pd.DataFrame(final_rows, columns=keys)
+        buses_list = [str(row.bus)+'-('+str(row.stop)+')' for row in buses_df_unique.itertuples()]
         #Finally we return all the data
-        return buses_df_unique, calc_lats, calc_lons, given_lats, given_lons, buses_list
+        return buses_df_unique, buses_list
 
 # CALLBACKS
 
@@ -388,11 +349,12 @@ def update_graph_live(lineId_value,n_intervals):
             The line whose buses are going to be ploted
     '''
     try:
-        lineId = int(lineId_value)
+        line_sn = lineId_value
+        line_id = lines_collected_dict[line_sn]['line_id']
 
         #And the line rows
-        line1 = lines_shapes.loc[(lines_shapes['line_id']==lineId)&(lines_shapes['direction']==1)]
-        line2 = lines_shapes.loc[(lines_shapes['line_id']==lineId)&(lines_shapes['direction']==2)]
+        line1 = lines_shapes.loc[(lines_shapes['line_sn']==line_sn)&(lines_shapes['direction']==1)]
+        line2 = lines_shapes.loc[(lines_shapes['line_sn']==line_sn)&(lines_shapes['direction']==2)]
         #Set the center of the graph to the centroid of the line
         center_x = line1.lon.mean()
         center_y = line2.lat.mean()
@@ -403,24 +365,7 @@ def update_graph_live(lineId_value,n_intervals):
             return 'Hits of account spent'
         else :
             arrival_time_data = arrival_time_data_complete[0]
-            calc_lats = arrival_time_data_complete[1]
-            calc_lons = arrival_time_data_complete[2]
-            given_lats = arrival_time_data_complete[3]
-            given_lons = arrival_time_data_complete[4]
-            buses_list = arrival_time_data_complete[5]
-
-        #We calculate the distance between given and calc coords
-        dist_list = []
-        for i in range(0,len(calc_lats)) :
-            lon1 = calc_lons[i]
-            lat1 = calc_lats[i]
-            lon2 = given_lons[i]
-            lat2 = given_lats[i]
-            if (lon2 == 0)&(lat2 == 0) :
-                distance = 0
-            else :
-                distance = haversine((lat1,lon1),(lat2, lon2))
-            dist_list.append(distance) #Distancia en metros
+            buses_list = arrival_time_data_complete[1]
 
         #Style depending on hour
         style = style_day
@@ -460,7 +405,7 @@ def update_graph_live(lineId_value,n_intervals):
             ))
 
         #Add the stops to the figure
-        stops_selected1 = stops.loc[stops.id.isin(line_stops_dict[str(lineId)]['1'][1:])]
+        stops_selected1 = stops.loc[stops.id.isin(lines_collected_dict[line_sn]['1']['stops'][1:])]
         fig.add_trace(go.Scattermapbox(
             lat=stops_selected1.lat,
             lon=stops_selected1.lon,
@@ -473,7 +418,7 @@ def update_graph_live(lineId_value,n_intervals):
             text=stops_selected1.id,
             hoverinfo='text'
         ))
-        stops_selected2 = stops.loc[stops.id.isin(line_stops_dict[str(lineId)]['2'][1:])]
+        stops_selected2 = stops.loc[stops.id.isin(lines_collected_dict[line_sn]['2']['stops'][1:])]
         fig.add_trace(go.Scattermapbox(
             lat=stops_selected2.lat,
             lon=stops_selected2.lon,
@@ -494,13 +439,13 @@ def update_graph_live(lineId_value,n_intervals):
                 lon=line.lon,
                 mode='lines',
                 line=dict(width=1.5, color=color),
-                text='Línea : {}-{}'.format(lineId,line.iloc[0].direction),
+                text='Línea : {}-{}'.format(line_sn,line.iloc[0].direction),
                 hoverinfo='text'
             ))
 
         #And set the figure layout
         fig.update_layout(
-            title='REAL TIME POSITION OF THE BUSES OF LINE {}'.format(lineId),
+            title='REAL TIME POSITION OF THE BUSES OF LINE {}'.format(line_sn),
             height=500,
             margin=dict(r=0, l=0, t=0, b=0),
             hovermode='closest',
@@ -518,9 +463,11 @@ def update_graph_live(lineId_value,n_intervals):
             )
         )
         #Clear null values (coords not given)
+        given_coords_list = arrival_time_data.given_coords.tolist()
+        dist_list = arrival_time_data.distance.tolist()
         pop_list = []
         for i in range(0,len(buses_list)) :
-            if dist_list[i]==0 :
+            if given_coords_list[i]==0 :
                 pop_list.append(i)
         for index in sorted(pop_list, reverse=True):
             del buses_list[index]
@@ -546,7 +493,7 @@ def update_graph_live(lineId_value,n_intervals):
             html.Div(className='columns',children=[
                 html.Div(className='column is-two-thirds',children=[
                     html.H2(
-                        'Live position of line {} buses'.format(lineId),
+                        'Live position of line {} buses'.format(line_sn),
                         className = 'subtitle is-4'
                     ),
                     dcc.Graph(

@@ -23,8 +23,8 @@ from app import app
 # WE LOAD THE DATA
 stops = pd.read_csv('M6Data/stops.csv')
 lines_shapes = pd.read_csv('M6Data/lines_shapes.csv')
-with open('M6Data/line_stops_dict.json', 'r') as f:
-    line_stops_dict = json.load(f)
+with open('M6Data/lines_collected_dict.json', 'r') as f:
+    lines_collected_dict = json.load(f)
 
 #Token for the mapbox api
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
@@ -33,27 +33,28 @@ style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
 pio.templates.default = 'plotly_white'
 
 #Load the buses dataframe and parse the dates ../../flash/EMTBuses/buses_data.csv
-buses_data = pd.read_csv(
-    '../buses_data.csv',
+buses_data = pd.read_csv('../buses_data.csv',
     dtype={
         'line': 'str',
         'destination': 'str',
-        'stop': 'int32',
-        'bus': 'int32',
-        'given_coords': 'int32',
-        'pos_in_burst':'int32',
-        'deviation': 'int32',
+        'stop': 'uint16',
+        'bus': 'uint16',
+        'given_coords': 'bool',
+        'pos_in_burst':'uint16',
         'estimateArrive': 'int32',
         'DistanceBus': 'int32',
         'request_time': 'int32',
-        'lat':'float',
-        'lon':'float'
+        'lat':'float32',
+        'lon':'float32'
     }
-)
+)[['line','destination','stop','bus','datetime','estimateArrive','DistanceBus','given_coords','lat','lon']]
+
+
+#Parse the dates
 buses_data['datetime'] = pd.to_datetime(buses_data['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
 
 #Values for components
-lines_retrieved = ['1','82','F','G','U','132','N2','N6']
+lines_retrieved = list(lines_collected_dict.keys())
 buses_retrieved = buses_data.bus.unique().tolist()
 stops_retrieved = buses_data.stop.unique().tolist()
 
@@ -196,27 +197,25 @@ layout = html.Div(className = '', children = [
 ])
 
 # FUNCTIONS
-def find_nearest_row(df,lat,lon) :
-    """
-    Returns the row nearest to the coordinates passed in the dataframe
+def calculate_coords(df,stop_id,dist_to_stop) :
+    '''
+    Returns the calculated coordinates of the bus
 
-        Parameters
+    Parameters
         ----------
         df : dataframe
-            Dataframe where we want to find the row
-        lat: float
-        lon: float
-    """
-    min_dist_error = 1000000.0
-    for row in df.itertuples() :
-        error = math.sqrt(abs(row.lat-lat)+abs(row.lon-lon))
-        if  error < min_dist_error :
-            min_dist_error = error
-            nearest_row = row
-    return nearest_row
+            Dataframe where we want to find the calculated coords
+        stop : str
+        dist_traveled : float
+    '''
+    line_sn = df.iloc[0].line_sn
+    direction = str(df.iloc[0].direction)
+    bus_distance = int(lines_collected_dict[line_sn][direction]['distances'][str(stop_id)]) - dist_to_stop
+    nearest_row = find_nearest_row_by_dist(df,bus_distance)
+    return nearest_row.lon, nearest_row.lat
 
 def find_nearest_row_by_dist(df,dist_traveled) :
-    """
+    '''
     Returns the row nearest to the distance traveled passed in the dataframe
 
         Parameters
@@ -224,35 +223,18 @@ def find_nearest_row_by_dist(df,dist_traveled) :
         df : dataframe
             Dataframe where we want to find the row
         dist_traveled : float
-    """
+    '''
     min_dist_error = 1000000.0
-    for row in df.itertuples() :
-        error = abs(row.dist_traveled-dist_traveled)
-        if  error < min_dist_error :
-            min_dist_error = error
-            nearest_row = row
+    df_reduced = df.loc[(df.dist_traveled>dist_traveled-100)&(df.dist_traveled<dist_traveled+100)]
+    if df_reduced.shape[0]!=0:
+        for row in df_reduced.itertuples() :
+            error = abs(row.dist_traveled-dist_traveled)
+            if  error < min_dist_error :
+                min_dist_error = error
+                nearest_row = row
+    else :
+        nearest_row = df.iloc[0]
     return nearest_row
-
-def point_by_distance_on_line (line,distance,stop_lat,stop_lon) :
-    """
-    Returns the coordinates of the bus location
-
-        Parameters
-        ----------
-        line: DataFrame
-            Points belonging to the requested line
-        distance : float
-            Distance of the bus to the stop in meters
-        stop_lat : float
-        stop_lon : float
-    """
-
-    nearest_row_to_stop = find_nearest_row(line,stop_lat,stop_lon)
-    dist_traveled_of_bus = nearest_row_to_stop.dist_traveled - distance
-    nearest_row_to_distance = find_nearest_row_by_dist(line,dist_traveled_of_bus)
-
-    #And we return the coordinates of the point
-    return nearest_row_to_distance.lon,nearest_row_to_distance.lat
 
 # CALLBACKS
 
@@ -548,15 +530,13 @@ def update_positions(rows,time_value):
                         last_given_lat = bus_lats[i]
                         last_given_lon = bus_lons[i]
 
-                dests_1 = ['HOSPITAL LA PAZ','CIUDAD UNIVERSITARIA','PARANINFO','PITIS','PROSPERIDAD','VALDEBEBAS','LAS ROSAS','1']
                 for row in bus_df.itertuples() :
                     if row.estimateArrive < 10000 :
-                        if row.destination in dests_1 :
+                        if row.destination == lines_collected_dict[row.line]['destinations'][1] :
                             line_rows = lines_shapes.loc[(lines_shapes.line_sn == row.line)&(lines_shapes.direction == 1)]
                         else :
                             line_rows = lines_shapes.loc[(lines_shapes.line_sn == row.line)&(lines_shapes.direction == 2)]
-                        stop  = stops.loc[stops.id == row.stop].iloc[0]
-                        last_calc_lon,last_calc_lat = point_by_distance_on_line(line_rows, row.DistanceBus, stop.lat, stop.lon)
+                        last_calc_lon,last_calc_lat = calculate_coords(line_rows, row.stop, row.DistanceBus)
                         lats_calc.append(last_calc_lat)
                         lons_calc.append(last_calc_lon)
 
