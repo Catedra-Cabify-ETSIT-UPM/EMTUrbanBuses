@@ -77,9 +77,10 @@ def process_bus_df(bus,df_stop,threshold,line_shape):
     trips,calc_lats,calc_lons = [],[],[]
     for i in range(df_bus.shape[0]) :
         #Calculate coordinates
-        calc_lon,calc_lat = calculate_coords(line_shape,stop_id,df_bus.iloc[i]['DistanceBus'])
-        calc_lons.append(calc_lon)
-        calc_lats.append(calc_lat)
+        #calc_lon,calc_lat = calculate_coords(line_shape,stop_id,df_bus.iloc[i]['DistanceBus'])
+        #calc_lons.append(calc_lon)
+        #calc_lats.append(calc_lat)
+
         #Estimate arrival time for each slice
         if ((df_bus.iloc[i].datetime - last_time).total_seconds() > 600) | (i==df_bus.shape[0]-1) :
             #Trip dataframe
@@ -100,8 +101,8 @@ def process_bus_df(bus,df_stop,threshold,line_shape):
                 df_trip = df_trip.assign(
                     day_trip=day_trip,
                     arrival_time=row.datetime + timedelta(seconds=int(row.estimateArrive)),
-                    calc_lat=calc_lats[last_index:i],
-                    calc_lon=calc_lons[last_index:i]
+                    #calc_lat=calc_lats[last_index:i],
+                    #calc_lon=calc_lons[last_index:i]
                 )
                 trips.append(df_trip)
                 last_index = i
@@ -147,7 +148,7 @@ def add_arrival_time_estim(df,threshold) :
                     buses = df_stop.bus.unique().tolist()
                     trips += sum((Parallel(n_jobs=num_cores)(delayed(process_bus_df)(bus,df_stop,threshold,line_shape) for bus in buses)), [])
     new_df = pd.concat(trips).sort_values(by='datetime',ascending='True')
-    return new_df[['line','destination','stop','bus','day_trip','datetime','estimateArrive','DistanceBus','arrival_time','given_coords','lat','lon','calc_lat','calc_lon']]
+    return new_df[['line','destination','stop','bus','day_trip','datetime','estimateArrive','DistanceBus','arrival_time','given_coords','lat','lon']]
 
 
 def clean_data(df,preprocess) :
@@ -192,16 +193,7 @@ def clean_data(df,preprocess) :
                    (row.estimateArrive < (int(lines_collected_dict[row.line][direction]['length'])/2)) and \
                    (3.6*row.DistanceBus/row.estimateArrive) < 120
 
-        #If the dataframe has been processed
-        if preprocess :
-            # Select rows where the error between estimated arrival time and actual one is less
-            # than 10 minutes, cause this may be caused by accidents or other strange sucesses
-            seconds_error = abs(((row.datetime + timedelta(seconds=int(row.estimateArrive))) - row.arrival_time).total_seconds())
-            arriv_time_error_cond = seconds_error < 600
-        else :
-            arriv_time_error_cond = True
-
-        return line_dest_stop_cond and dist_cond and eta_cond and arriv_time_error_cond
+        return line_dest_stop_cond and dist_cond and eta_cond
 
     #Check conditions in df
     mask = df.parallel_apply(check_conditions,axis=1)
@@ -263,7 +255,7 @@ def main():
         now = datetime.datetime.now()
         print('-------------------------------------------------------------------')
         print('Preprocessing the data... - {}\n'.format(now))
-        buses_data = add_arrival_time_estim(buses_data,25)
+        buses_data = add_arrival_time_estim(buses_data,45)
         print(buses_data.info())
         lapsed_seconds = round((datetime.datetime.now()-now).total_seconds(),3)
         print('\nFinished in {} seconds'.format(lapsed_seconds))

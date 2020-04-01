@@ -183,10 +183,12 @@ def get_arrival_data(requested_lines) :
         global account_index
         global accessToken
         global out_of_hits
+        global day_burst
+
+        #We increase the day burst by one
+        day_burst = day_burst + 1
 
         row_list = []
-        calc_lats,calc_lons = [],[]
-        given_lats,given_lons = [],[]
 
         #Información de la recogida de datos
         n_ok_answers = 0
@@ -282,7 +284,7 @@ def get_arrival_data(requested_lines) :
         else :
             buses_df.to_csv(f, mode='a', header=True)
 
-        print('There were {} ok responses and {} not okey responses - {}'.format(n_ok_answers,n_not_ok_answers,datetime.datetime.now()))
+        print('Burst {} - There were {} ok responses and {} not okey responses - {}'.format(day_burst,n_ok_answers,n_not_ok_answers,datetime.datetime.now()))
         print('{} new rows appended to {}\n'.format(buses_df.shape[0],f))
 
 
@@ -291,11 +293,13 @@ from api_credentials import emails,passwords,XClientId,passKey
 account_index = 0
 accessToken = ''
 out_of_hits = True
+day_burst = 0
 
 def main():
     global account_index
     global accessToken
     global out_of_hits
+    global day_burst
 
     rt_started = False
 
@@ -382,6 +386,7 @@ def main():
                     print('Stop retrieving data from lines 1,44,82,132,133 - 272 Stops - {}\n'.format(datetime.datetime.now()))
                     rt.stop()
                     rt_started = False
+                    day_burst = 0
         #If we are in Saturday or Sunday
         else :
             #Retrieve data from lines 1,44,82,132,133 - 272 Stops
@@ -404,6 +409,7 @@ def main():
                     print('Stop retrieving data for weekends - {}\n'.format(datetime.datetime.now()))
                     rt.stop()
                     rt_started = False
+                    day_burst = 0
 
         #Wait 10 seconds till next loop (no need to run the loop faster)
         time.sleep(10)
