@@ -144,7 +144,7 @@ def get_time_between_stops(df) :
         dfs_list += dfs
 
     #Concatenate dataframes
-    processed_df = pd.concat(dfs_list).sort_values(by=['line','direction','date','st_hour','stopA','stopB'],ascending=True).reset_index(drop=True)
+    processed_df = pd.concat(dfs_list).sort_values(by=['line','direction','date','st_hour'], ascending=True).reset_index(drop = True)
     return processed_df
 
 #MAIN
