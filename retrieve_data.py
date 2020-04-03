@@ -106,7 +106,7 @@ def get_access_token(email,password) :
             )
         json_response = response.json()
         return json_response
-    except e:
+    except Exception as e:
         print('There was an error in the request \n')
         print(e)
         print('\n')
@@ -146,7 +146,7 @@ def get_arrival_times(stopId,accessToken) :
         )
         #Return the response if we received it ok
         return response
-    except e:
+    except Exception as e:
         print('There was an error in the request \n')
         print(e)
         print('\n')
@@ -279,10 +279,14 @@ def get_arrival_data(requested_lines) :
 
         #And we append the data to the csv
         f='buses_data.csv'
+        f_burst='buses_data_burst.csv'
         if os.path.isfile(f) :
             buses_df.to_csv(f, mode='a', header=False)
         else :
             buses_df.to_csv(f, mode='a', header=True)
+            
+        #Append to burst file
+        buses_df.to_csv(f_burst)
 
         print('Burst {} - There were {} ok responses and {} not okey responses - {}'.format(day_burst,n_ok_answers,n_not_ok_answers,datetime.datetime.now()))
         print('{} new rows appended to {}\n'.format(buses_df.shape[0],f))

@@ -13,9 +13,9 @@ num_cores = multiprocessing.cpu_count()
 pandarallel.initialize()
 
 # WE LOAD THE STOPS AND LINES DATA
-lines_shapes = pd.read_csv('M6Data/lines_shapes.csv')
+lines_shapes = pd.read_csv('../M6Data/lines_shapes.csv')
 #Load line_stops_dict
-with open('M6Data/lines_collected_dict.json', 'r') as f:
+with open('../M6Data/lines_collected_dict.json', 'r') as f:
     lines_collected_dict = json.load(f)
 
 #FUNCTIONS
@@ -69,7 +69,7 @@ def process_bus_df(bus,df_stop,threshold,line_shape):
     '''
     Processes the rows adding day_trip, arrival time and calculated coordinates attributes
     '''
-    df_bus = df_stop.loc[df_stop.bus == bus]
+    df_bus = df_stop.loc[df_stop.bus == bus].sort_values(by='datetime').reset_index(drop=True)
     stop_id = df_bus.iloc[0].stop
     last_index = 0
     last_time = df_bus.iloc[0].datetime
@@ -207,7 +207,7 @@ def clean_data(df,preprocess) :
 def main():
     #Read passed parameters
     preprocess,clean = False,False
-    f = 'buses_data_'
+    f = '../ProcessedData/buses_data_'
     if len(argv)>1:
         if ('p' in argv[1]) :
             preprocess = True

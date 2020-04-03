@@ -14,7 +14,7 @@ pandarallel.initialize()
 
 
 #Load line_stops_dict
-with open('M6Data/lines_collected_dict.json', 'r') as f:
+with open('../M6Data/lines_collected_dict.json', 'r') as f:
     lines_collected_dict = json.load(f)
 
 #FUNCTIONS
@@ -154,7 +154,7 @@ def main():
     now = datetime.datetime.now()
     print('\n-------------------------------------------------------------------')
     print('Reading the original data... - {}\n'.format(now))
-    buses_data = pd.read_csv('../buses_data_p.csv',
+    buses_data = pd.read_csv('../ProcessedData/buses_data_pc.csv',
         dtype={
             'line': 'str',
             'destination': 'str',
@@ -189,7 +189,7 @@ def main():
     print('-------------------------------------------------------------------\n\n')
 
     #Processed data info
-    f = '../times_bt_stops.csv'
+    f = '../ProcessedData/times_bt_stops.csv'
     now = datetime.datetime.now()
     print('-------------------------------------------------------------------')
     print('Writting new data to {}... - {}'.format(f,now))

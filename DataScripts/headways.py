@@ -13,10 +13,10 @@ num_cores = multiprocessing.cpu_count()
 pandarallel.initialize()
 
 #Load line_stops_dict
-with open('M6Data/lines_collected_dict.json', 'r') as f:
+with open('../M6Data/lines_collected_dict.json', 'r') as f:
     lines_collected_dict = json.load(f)
 #Load times between stops data
-times_bt_stops = pd.read_csv('../times_bt_stops.csv',
+times_bt_stops = pd.read_csv('../ProcessedData/times_bt_stops.csv',
     dtype={
         'line': 'str',
         'direction': 'uint16',
@@ -206,14 +206,14 @@ def get_headways(df) :
             Data to process
     '''
     #For every line collected
-    lines = ['1']#,'44','82','F','G','U','132','133','N2','N6']
+    lines = ['1','44','82','F','G','U','132','133','N2','N6']
 
     #Get new dictionaries and process the lines
     dfs_list = []
     for line in lines :
         line_df = df.loc[df.line == line]
         dates = line_df.datetime.dt.date.unique()
-        dfs = (Parallel(n_jobs=num_cores)(delayed(process_day_df)(line_df,date) for date in dates[6:11]))
+        dfs = (Parallel(n_jobs=num_cores)(delayed(process_day_df)(line_df,date) for date in dates))
         dfs_list += dfs
 
     #Concatenate dataframes
@@ -227,7 +227,7 @@ def main():
     now = datetime.datetime.now()
     print('\n-------------------------------------------------------------------')
     print('Reading the original data... - {}\n'.format(now))
-    buses_data = pd.read_csv('../buses_data_c.csv',
+    buses_data = pd.read_csv('../ProcessedData/buses_data_pc.csv',
         dtype={
             'line': 'str',
             'destination': 'str',
@@ -261,7 +261,7 @@ def main():
     print('-------------------------------------------------------------------\n\n')
 
     #Processed data info
-    f = '../headways.csv'
+    f = '../ProcessedData/headways.csv'
     now = datetime.datetime.now()
     print('-------------------------------------------------------------------')
     print('Writting new data to {}... - {}'.format(f,now))
