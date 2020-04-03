@@ -12,7 +12,7 @@ app.index_string = '''
 
     <head>
         {%metas%}
-        <title>EMT BUSES</title>
+        <title>EMT URBAN BUSES</title>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.8.0/css/bulma.min.css">
         <script defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
         <link href='https://fonts.googleapis.com/css?family=Megrim' rel='stylesheet'>
@@ -35,7 +35,7 @@ app.index_string = '''
         <nav class="navbar navlogo" role="navigation" aria-label="main navigation">
 
           <div class="navbar-brand">
-            <a class="navbar-item logo1" href="/">EMT BUSES</a>
+            <a class="navbar-item logo1" href="/">EMT URBAN BUSES</a>
             <div class="navbar-burger burger" data-target="navMenu">
               <span></span>
               <span></span>
@@ -47,8 +47,8 @@ app.index_string = '''
 
             <div class="navbar-start">
               <a class="navbar-item" href="/">LINES AND STOPS MAP</a>
-              <a class="navbar-item" href="/apps/app1">LIVE BUSES OF LINE</a>
-              <a class="navbar-item" href="/apps/app2">DATA RETRIEVED MONITORING</a>
+              <a class="navbar-item" href="/apps/app1">LIVE DATA</a>
+              <a class="navbar-item" href="/apps/app2">COLLECTED DATA</a>
               <a class="navbar-item" href="/credits">Credits</a>
             </div>
 

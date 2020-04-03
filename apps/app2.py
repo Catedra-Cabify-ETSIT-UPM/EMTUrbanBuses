@@ -33,7 +33,7 @@ style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
 pio.templates.default = 'plotly_white'
 
 #Load the buses dataframe and parse the dates ../../flash/EMTBuses/buses_data.csv
-buses_data = pd.read_csv('../buses_data.csv',
+buses_data = pd.read_csv('../../flash/EMTBuses/buses_data.csv',
     dtype={
         'line': 'str',
         'destination': 'str',

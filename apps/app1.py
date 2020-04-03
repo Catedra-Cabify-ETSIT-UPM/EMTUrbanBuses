@@ -2,10 +2,6 @@ import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output
 
-import requests
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
-
 import pandas as pd
 import json
 
@@ -14,36 +10,66 @@ import plotly.io as pio
 
 import math
 
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
-import datetime
-
 from app import app
 
+#Available colors
+colors = [
+    '#1f77b4',  # muted blue
+    '#ff7f0e',  # safety orange
+    '#2ca02c',  # cooked asparagus green
+    '#d62728',  # brick red
+    '#9467bd',  # muted purple
+    '#8c564b',  # chestnut brown
+    '#e377c2',  # raspberry yogurt pink
+    '#7f7f7f',  # middle gray
+    '#bcbd22',  # curry yellow-green
+    '#17becf'   # blue-teal
+]
 
+zooms = {
+    '1': 12.8,
+    '44': 13,
+    '82': 13,
+    'F': 14,
+    'G': 14,
+    'U': 14,
+    '132': 13,
+    '133': 13,
+    'N2': 12.5,
+    'N6': 12.5,
+}
 
 # WE LOAD THE DATA
 stops = pd.read_csv('M6Data/stops.csv')
 lines_shapes = pd.read_csv('M6Data/lines_shapes.csv')
 with open('M6Data/lines_collected_dict.json', 'r') as f:
     lines_collected_dict = json.load(f)
+#Load times between stops data
+times_bt_stops = pd.read_csv('../../flash/EMTBuses/ProcessedData/times_bt_stops.csv',
+    dtype={
+        'line': 'str',
+        'direction': 'uint16',
+        'st_hour': 'uint16',
+        'end_hour': 'uint16',
+        'stopA': 'uint16',
+        'stopB': 'uint16',
+        'bus': 'uint16',
+        'trip_time':'float32',
+        'api_trip_time':'float32'
+    }
+)
+#Parse the dates
+times_bt_stops['date'] = pd.to_datetime(times_bt_stops['date'], format='%Y-%m-%d')
 
 
 layout = html.Div(className = '', children = [
 
     html.Div(className = 'box', children = [
-        html.H1('LIVE POSITION OF BUSES BELONGING TO DESIRED LINE',className = 'title is-3'),
-        html.Span('Line ID: ', className = 'tag is-light is-large'),
-        dcc.Dropdown(
-            id="lineId-select",
-            options=[{"label": i, "value": i} for i in lines_collected_dict.keys()],
-            value='1',
-            searchable=True
-        ),
-        html.Div(className='box',id='live-update-graph'),
+        html.H1('LIVE DATA MONITORING',className = 'title is-3'),
+        html.Div(className='box',id='live-update-data'),
         dcc.Interval(
             id='interval-component',
-            interval=7*1000, # in milliseconds
+            interval=50*1000, # in milliseconds
             n_intervals=0
         )
     ])
@@ -52,152 +78,14 @@ layout = html.Div(className = '', children = [
 
 #MAPBOX API TOKEN AND STYLES
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
-style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
-style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
+style = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
 pio.templates.default = 'plotly_white'
-
-# API FUNCTIONS
-def requests_retry_session(retries=3,backoff_factor=0.3,status_forcelist=(500, 502, 504),session=None):
-    '''
-    Function to ensure we get a good response for the request
-    '''
-    session = session or requests.Session()
-    retry = Retry(
-        total=retries,
-        read=retries,
-        connect=retries,
-        backoff_factor=backoff_factor,
-        status_forcelist=status_forcelist,
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    return session
-
-def get_access_token(email,password) :
-    '''
-    Returns the access token of the EMT Madrid API
-
-        Parameters
-        ----------
-        email : string
-            The email of the account
-        password : string
-            Password of the account
-    '''
-    try:
-        if email == 'a.jarabo@alumnos.upm.es' :
-            #Special request for the account with API
-            response = requests_retry_session().get(
-                'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
-                headers={
-                    'X-ClientId':XClientId,
-                    'passKey':passKey
-                },
-                timeout=5
-            )
-        else :
-            response = requests_retry_session().get(
-                'https://openapi.emtmadrid.es/v2/mobilitylabs/user/login/',
-                headers={
-                    'email':email,
-                    'password':password
-                },
-                timeout=5
-            )
-        json_response = response.json()
-        if json_response['code'] == '98' :
-            return '98'
-        else :
-            return json_response['data'][0]['accessToken']
-
-    except e:
-        print('There was an error in the request \n')
-        print(e)
-        print('\n')
-        return 'Error'
-
-def get_arrival_times(lineId,stopId,accessToken) :
-    """
-    Returns the arrival data of buses for the desired stop and line
-
-        Parameters
-        ----------
-        lineId : string
-            The line id
-        stopId : string
-            The stop code
-        accessToken: string
-            The accessToken obtained in the login
-    """
-
-    #We build the body for the request
-    body = {
-        'cultureInfo': 'ES',
-        'Text_StopRequired_YN': 'N',
-        'Text_EstimationsRequired_YN': 'Y',
-        'Text_IncidencesRequired_YN': 'N',
-        'DateTime_Referenced_Incidencies_YYYYMMDD':'20200130'
-    }
-
-    #And we perform the request
-    try:
-        response = requests_retry_session().post(
-            'https://openapi.emtmadrid.es/v2/transport/busemtmad/stops/{}/arrives/{}/'.format(stopId,lineId),
-            data = json.dumps(body),
-            headers = {
-                'accessToken': accessToken,
-                'Content-Type': 'application/json'
-            },
-            timeout = 20
-        )
-        #Return the response if we received it ok
-        return response
-    except e:
-        print('There was an error in the request \n')
-        print(e)
-        print('\n')
-        return 'Error'
-
-
-# WE LOGIN IN THE EMT API
-from api_credentials import emails,passwords,XClientId,passKey
-#Try to get an accessToken until we get a response to the login without errors
-for i in range(0,5) :
-    accessToken = 'Error'
-    while accessToken == 'Error' :
-        accessToken = get_access_token(emails[i],passwords[i])
-    if accessToken == '98' :
-        if i == 4 :
-            print('No hits available in any of the accounts - Closing server')
-            exit(0)
-    else :
-        #Login made correctly
-        break
 
 
 # FUNCTIONS
-def haversine(coord1, coord2):
-    '''
-    Returns distance between two given coordinates in meters
-    '''
-    R = 6372800  # Earth radius in meters
-    lat1, lon1 = coord1
-    lat2, lon2 = coord2
-
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi       = math.radians(lat2 - lat1)
-    dlambda    = math.radians(lon2 - lon1)
-
-    a = math.sin(dphi/2)**2 + \
-        math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
-
-    return 2*R*math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
 def calculate_coords(df,stop_id,dist_to_stop) :
     '''
     Returns the calculated coordinates of the bus
-
     Parameters
         ----------
         df : dataframe
@@ -214,7 +102,6 @@ def calculate_coords(df,stop_id,dist_to_stop) :
 def find_nearest_row_by_dist(df,dist_traveled) :
     '''
     Returns the row nearest to the distance traveled passed in the dataframe
-
         Parameters
         ----------
         df : dataframe
@@ -233,288 +120,381 @@ def find_nearest_row_by_dist(df,dist_traveled) :
         nearest_row = df.iloc[0]
     return nearest_row
 
-def get_arrival_time_data_of_line(line1,line2,accessToken) :
-    """
-    Returns the data of all the buses inside the desired line
+def process_headways(int_df) :
+    rows_list = []
+    #Burst time
+    actual_time = int_df.iloc[0].datetime
+    
+    #Line
+    line = int_df.iloc[0].line
+    
+    #Stops of each line reversed
+    stops1 = lines_collected_dict[line]['1']['stops'][-2::-1]
+    stops2 = lines_collected_dict[line]['2']['stops'][-2::-1]
+    
+    #Assign destination values
+    dest2,dest1 = lines_collected_dict[line]['destinations']
+    
+    #Process mean times between stops
+    tims_bt_stops = times_bt_stops.loc[(times_bt_stops.line == line) & \
+                                        (times_bt_stops.date.dt.weekday == actual_time.weekday()) & \
+                                        (times_bt_stops.st_hour >= actual_time.hour) & \
+                                        (times_bt_stops.st_hour <= actual_time.hour + 3)]
+    #Group and get the mean values
+    tims_bt_stops = tims_bt_stops.groupby(['line','direction','stopA','stopB']).mean()
+    tims_bt_stops = tims_bt_stops.reset_index()[['line','direction','stopA','stopB','trip_time','api_trip_time']]
 
-        Parameters
-        ----------
-        line1 : DataFrame
-            Data about the line in direction 1
-        line2 : DataFrame
-            Data about the line in direction 2
-        accessToken: string
-            The accessToken obtained in the login
-    """
-    #id and short name of the line used for the requests
-    line_id = str(line1.iloc[0].line_id)
-    line_sn = line1.iloc[0].line_sn
+    #All stops of the line
+    stops = stops1 + stops2
+    stop_df_list = []
+    dest,direction = dest1,'1'
+    for i in range(len(stops)) :
+        stop = stops[i]
+        if i == 0 :
+            mean_time_to_stop = 0
+        elif i == len(stops1) :
+            mean_time_to_stop = 0
+            dest,direction = dest2,'2'
+        else :
+            mean_df = tims_bt_stops.loc[(tims_bt_stops.stopA == int(stop)) & \
+                            (tims_bt_stops.direction == int(direction))]
+            if mean_df.shape[0] > 0 :
+                mean_time_to_stop += mean_df.iloc[0].trip_time
+            else :
+                break
 
-    #The keys for the dataframe that is going to be built
-    keys = ['bus','line','direction','stop','isHead','destination','deviation','estimateArrive','DistanceBus','given_coords','lat','lon','calc_lat','calc_lon','distance']
+        stop_df = int_df.loc[(int_df.stop == int(stop)) & \
+                            (int_df.destination == dest)]
 
-    #List with all the stops in both directions
-    stop_codes = list(set(lines_collected_dict[line_sn]['1']['stops'] + lines_collected_dict[line_sn]['2']['stops']))
+        #Drop duplicates, recalculate estimateArrive and append to list
+        stop_df = stop_df.drop_duplicates('bus',keep='first')
+        
+        buses_out1,buses_out2 = [],[]
+        if (stop == stops1[-1]) or (stop == stops2[-1]) :
+            if direction == '1' :
+                buses_out1 = stop_df.bus.unique().tolist()
+            else :
+                buses_out2 = stop_df.bus.unique().tolist()
+        else :
+            stop_df.estimateArrive = stop_df.estimateArrive + mean_time_to_stop
+            stop_df_list.append(stop_df)
 
-    #Function to perform the requests asynchronously, performing them concurrently would be too slow
-    async def get_data_asynchronous() :
-        row_list = []
+    #Concatenate and group them
+    stops_df = pd.concat(stop_df_list)
 
-        #We set the number of workers that is going to take care about the requests
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            #We create a loop object
-            loop = asyncio.get_event_loop()
-            #And a list of tasks to be performed by the loop
-            tasks = [
-                loop.run_in_executor(
-                    executor,
-                    get_arrival_times, #Function that is gonna be called by the tasks
-                    *(line_sn,stop_id,accessToken)  #Parameters for the function
-                )
-                for stop_id in stop_codes
-            ]
-            #And finally we perform the tasks and gather the information returned by them into two lists
-            for response in await asyncio.gather(*tasks) :
-                if not response == 'Error' :
-                    arrival_data = response.json()
-                    if arrival_data['code'] == '98':
-                        #Return the data gathered if the request that fails isnt the first
-                        return 'Hits of account spent'
+
+    #Group by bus and destination
+    stops_df = stops_df.groupby(['bus','destination']).mean().sort_values(by=['estimateArrive'])
+    stops_df = stops_df.reset_index().drop_duplicates('bus',keep='first').sort_values(by=['destination'])
+    #Loc buses not given by first stop
+    stops_df = stops_df.loc[((stops_df.destination == dest1) & (~stops_df.bus.isin(buses_out1))) | \
+                            ((stops_df.destination == dest2) & (~stops_df.bus.isin(buses_out2))) ]
+    #Calculate time intervals
+    if stops_df.shape[0] > 0 :
+        hw_pos1 = 0
+        hw_pos2 = 0
+        for i in range(stops_df.shape[0]) :
+            est1 = stops_df.iloc[i]
+
+            direction = '1' if est1.destination == dest1 else '2'
+            if ((direction == '1') & (hw_pos1 == 0)) or ((direction == '2') & (hw_pos2 == 0))  :
+                #Create dataframe row
+                row = {}
+                row['datetime'] = actual_time
+                row['line'] = line
+                row['direction'] = direction
+                row['busA'] = 0
+                row['busB'] = est1.bus
+                row['hw_pos'] = 0
+                row['headway'] = 0
+                row['busB_ttls'] = int(est1.estimateArrive)
+
+                #Append row to the list of rows
+                rows_list.append(row)
+
+                #Increment hw pos
+                if direction == '1' :
+                    hw_pos1 += 1
                 else :
-                    continue
+                    hw_pos2 += 1
 
-                #We get the buses data and stop coords
-                buses_data = arrival_data['data'][0]['Arrive']
-                for bus in buses_data :
-                    #Given coordinates provided by the API
-                    bus['lon'],bus['lat'] = bus['geometry']['coordinates'][0],bus['geometry']['coordinates'][1]
-                    if bus['lat']*bus['lon'] == 0 :
-                        bus['given_coords'] = 0
-                    else :
-                        bus['given_coords'] = 1
-                    #We calculate the bus position depending on the direction it belongs to
-                    if bus['destination'] == lines_collected_dict[line_sn]['destinations'][1] :
-                        bus['direction'] = 1
-                        bus['calc_lon'],bus['calc_lat'] = calculate_coords(line1,bus['stop'],bus['DistanceBus'])
-                    else :
-                        bus['direction'] = 2
-                        bus['calc_lon'],bus['calc_lat'] = calculate_coords(line2,bus['stop'],bus['DistanceBus'])
-                    bus['distance'] = haversine((bus['calc_lat'],bus['calc_lon']),(bus['lat'], bus['lon']))
-                    values = [bus[key] for key in keys]
-                    row_list.append(dict(zip(keys, values)))
+            if i < (stops_df.shape[0] - 1) :
+                est2 = stops_df.iloc[i+1]
+            else :
+                break
 
-        return row_list
+            if est1.destination == est2.destination :
+                headway = int(est2.estimateArrive-est1.estimateArrive)
 
-    #We declare the loop and call it, then we run it until it is complete
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    future = asyncio.ensure_future(get_data_asynchronous())
-    loop.run_until_complete(future)
+                #Create dataframe row
+                row = {}
+                row['datetime'] = actual_time
+                row['line'] = line
+                row['direction'] = direction
+                row['busA'] = est1.bus
+                row['busB'] = est2.bus
+                row['hw_pos'] = hw_pos1 if direction == '1' else hw_pos2
+                row['headway'] = headway
+                row['busB_ttls'] = int(est2.estimateArrive)
 
-    #And once it is completed we gather the information returned by it like this
-    future_result = future.result()
-    if future_result == 'Hits of account spent' :
-        return 'Hits of account spent'
+                #Append row to the list of rows
+                rows_list.append(row)
+
+                #Increment hw pos
+                if direction == '1' :
+                    hw_pos1 += 1
+                else :
+                    hw_pos2 += 1
+                    
+    return pd.DataFrame(rows_list)
+                    
+def build_map(line_df) :
+    '''
+    Returns a figure with the map of live location of buses
+    '''
+    if line_df.shape[0] < 1 :
+        return 'EMPTY'
+    
+    #Line and destinations
+    line = line_df.iloc[0].line
+    dest2,dest1 = lines_collected_dict[line]['destinations']
+    
+    #Select line line shapes
+    line1 = lines_shapes.loc[(lines_shapes.line_sn == line) & (lines_shapes.direction == 1)]
+    line2 = lines_shapes.loc[(lines_shapes.line_sn == line) & (lines_shapes.direction == 2)]
+    center_x = line1.lon.mean()
+    center_y = line1.lat.mean()
+
+    #We drop the duplicated buses keeping the instance that is closer to a stop
+    line_df = line_df.sort_values(by='DistanceBus').drop_duplicates('bus',keep='first')
+
+    #We create the figure object
+    new_map = go.Figure()
+    
+    #Add the bus points to the figure
+    for bus in line_df.itertuples() :
+        if bus.destination == dest1 :
+            lon,lat = calculate_coords(line1,bus.stop,bus.DistanceBus)
+        else :
+            lon,lat = calculate_coords(line2,bus.stop,bus.DistanceBus)
+            
+        #Assign color based on bus id
+        color = colors[bus.bus%len(colors)]
+        #Bus marker
+        new_map.add_trace(go.Scattermapbox(
+            lat=[lat],
+            lon=[lon],
+            mode='markers',
+            marker=go.scattermapbox.Marker(
+                size=20,
+                color=color,
+                opacity=1
+            ),
+            text=[bus.bus],
+            hoverinfo='text'
+        ))
+
+    #Select line stops
+    stop_names = lines_collected_dict[line]['1']['stops'][1:] + lines_collected_dict[line]['2']['stops'][1:]
+    line_stops = stops.loc[stops.id.isin(stop_names)]
+
+    #Add the stops to the figure
+    new_map.add_trace(go.Scattermapbox(
+        lat=line_stops.lat,
+        lon=line_stops.lon,
+        mode='markers',
+        marker=go.scattermapbox.Marker(
+            size=8,
+            color='green',
+            opacity=0.7
+        ),
+        text=line_stops.id,
+        hoverinfo='text'
+    ))
+
+    #Add lines to the figure
+    for line_shape in [line1,line2] :
+        color = 'rgb(108, 173, 245)' if line_shape.iloc[0].direction == 1 else 'rgb(243, 109, 90)'
+        new_map.add_trace(go.Scattermapbox(
+            lat=line_shape.lat,
+            lon=line_shape.lon,
+            mode='lines',
+            line=dict(width=1.5, color=color),
+            text='Línea : {}-{}'.format(line,line_shape.iloc[0].direction),
+            hoverinfo='text'
+        ))
+
+    #And set the figure layout
+    new_map.update_layout(
+        title='BUSES POSITION',
+        height=500,
+        margin=dict(r=0, l=0, t=50, b=0),
+        hovermode='closest',
+        showlegend=False,
+        mapbox=dict(
+            accesstoken=mapbox_access_token,
+            bearing=0,
+            center=dict(
+                lat=center_y,
+                lon=center_x
+            ),
+            pitch=0,
+            zoom=zooms[line],
+            style=style
+        )
+    )
+    #And finally we return the map
+    return new_map
+
+def build_graph(line_df) :
+    '''
+    Returns a figure with the graph of headways between buses
+    '''
+    if line_df.shape[0] < 1 :
+        return 'EMPTY'
+    
+    headways = process_headways(line_df)
+    
+    #Max dists
+    hw1 = headways.loc[headways.direction == '1']
+    hw2 = headways.loc[headways.direction == '2']
+    if hw1.shape[0] == 0 :
+        max_dist1 = 0
     else :
-        row_list = future_result
+        max_dist1 = hw1.busB_ttls.max()
+    if hw2.shape[0] == 0 :
+        max_dist2 = 0
+    else :
+        max_dist2 = hw2.busB_ttls.max()
+    
+    #Create figure object
+    graph = go.Figure()
+    
+    #Add buses to graph
+    for bus in headways.itertuples() :
+        #Assign color based on bus id
+        color = colors[bus.busB%len(colors)]
+        
+        y = int(bus.direction) 
+        if y == 1 :
+            x = bus.busB_ttls
+        else :
+            x = max_dist2 - bus.busB_ttls
+        
+        #Add marker
+        graph.add_trace(go.Scatter(
+            mode='markers',
+            name=bus.busB,
+            x=[x],
+            y=[y],
+            marker=dict(
+                size=20,
+                color=color
+            ),
+            text=[str(bus.busB)],
+            hoverinfo='text'
+        ))
+        
+    #Set title and layout
+    graph.update_layout(
+        title='HEADWAYS',
+        xaxis = dict(
+            title_text = 'Seconds',
+            nticks=20
+        ),
+        yaxis = dict(
+            title_text = 'Direction',
+            range = [0.5,2.5]
+        ),
+        xaxis_title='Seconds',
+        yaxis_title='Direction',
+        height=500,
+        margin=dict(r=0, l=0, t=50, b=0),
+        hovermode='closest'
+    )
+        
+    #Finally we return the graph
+    return graph
 
-        #We create the dataframe of the buses
-        buses_df = pd.DataFrame(row_list, columns=keys)
-
-        #And then we get only the rows where each bus is closer to a stop (lower DistanceBus attrib)
-        frames = []
-        final_rows = []
-        for bus_id in buses_df.bus.unique() :
-            buses_df_reduced = buses_df.loc[(buses_df.bus==bus_id)]
-            final_rows.append(buses_df_reduced.loc[buses_df_reduced.DistanceBus==buses_df_reduced.DistanceBus.min()].iloc[0])
-
-        buses_df_unique = pd.DataFrame(final_rows, columns=keys)
-        buses_list = [str(row.bus)+'-('+str(row.stop)+')' for row in buses_df_unique.itertuples()]
-        #Finally we return all the data
-        return buses_df_unique, buses_list
 
 # CALLBACKS
 
 # CALLBACK 1 - Live Graph of Line Buses
-@app.callback(Output(component_id = 'live-update-graph',component_property = 'children'),
-              [Input(component_id = 'lineId-select',component_property = 'value'),
-              Input(component_id = 'interval-component',component_property = 'n_intervals')])
-def update_graph_live(lineId_value,n_intervals):
+@app.callback(Output(component_id = 'live-update-data',component_property = 'children'),
+              [Input(component_id = 'interval-component',component_property = 'n_intervals')])
+def update_graph_live(n_intervals) :
     '''
-    Function that updates the graph each x seconds depending on the value of lineId
+    Function that reads buses_data_burst every x seconds and updates the graphs
 
         Parameters
         ---
         input_lineId_value: string
             The line whose buses are going to be ploted
     '''
-    try:
-        line_sn = lineId_value
-        line_id = lines_collected_dict[line_sn]['line_id']
+    #Read last burst of data
+    burst = pd.read_csv('../../flash/EMTBuses/buses_data_burst.csv',
+        dtype={
+            'line': 'str',
+            'destination': 'str',
+            'stop': 'uint16',
+            'bus': 'uint16',
+            'given_coords': 'bool',
+            'pos_in_burst':'uint16',
+            'estimateArrive': 'int32',
+            'DistanceBus': 'int32',
+            'request_time': 'int32',
+            'lat':'float32',
+            'lon':'float32'
+        }
+    )[['line','destination','stop','bus','datetime','estimateArrive','DistanceBus']]
+    #Parse the dates
+    burst['datetime'] = pd.to_datetime(burst['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
 
-        #And the line rows
-        line1 = lines_shapes.loc[(lines_shapes['line_sn']==line_sn)&(lines_shapes['direction']==1)]
-        line2 = lines_shapes.loc[(lines_shapes['line_sn']==line_sn)&(lines_shapes['direction']==2)]
-        #Set the center of the graph to the centroid of the line
-        center_x = line1.lon.mean()
-        center_y = line2.lat.mean()
+    #Lines to iterate over
+    lines = ['1','44','82','F','G','U','132','133','N2','N6']
+    maps,graphs = [],[]
+    for line in lines :
+        #Line dataframe
+        line_df = burst.loc[burst.line == line]
 
-        #We obtain the arrival data for the line
-        arrival_time_data_complete = get_arrival_time_data_of_line(line1,line2,accessToken)
-        if arrival_time_data_complete == 'Hits of account spent' :
-            return 'Hits of account spent'
+        #Create map
+        new_map = build_map(line_df)
+        maps.append(new_map)
+
+        #Create graph
+        graph = build_graph(line_df)
+        graphs.append(graph)
+
+        #FUTURE : SHOULD CHECK DATA FOR ANOMALIES DETECTION
+
+    #Build tag objects
+    tabs = []
+    for i in range(len(lines)) :
+        if maps[i] == 'EMPTY' :
+            tab = dcc.Tab(label=lines[i],children = [
+                html.H2('NO BUSES WERE FOUND IN THE LINE',className = 'subtitle is-3')
+            ])
         else :
-            arrival_time_data = arrival_time_data_complete[0]
-            buses_list = arrival_time_data_complete[1]
-
-        #Style depending on hour
-        style = style_day
-
-        #We create the figure object
-        fig = go.Figure()
-        #Add the bus points to the figure
-        for bus in arrival_time_data.itertuples() :
-            if bus.direction == 1 :
-                color = 'blue'
-            else :
-                color = 'red'
-            fig.add_trace(go.Scattermapbox(
-                lat=[bus.lat],
-                lon=[bus.lon],
-                mode='markers',
-                marker=go.scattermapbox.Marker(
-                    size=10,
-                    color=color,
-                    opacity=0.7
-                ),
-                text=['{}-{}'.format(bus.bus,bus.stop)],
-                hoverinfo='text'
-            ))
-            #Add the calculated coords points to the figure
-            fig.add_trace(go.Scattermapbox(
-                lat=[bus.calc_lat],
-                lon=[bus.calc_lon],
-                mode='markers',
-                marker=go.scattermapbox.Marker(
-                    size=8,
-                    color='black',
-                    opacity=0.7
-                ),
-                text=['{}-{}'.format(bus.bus,bus.bus)],
-                hoverinfo='text'
-            ))
-
-        #Add the stops to the figure
-        stops_selected1 = stops.loc[stops.id.isin(lines_collected_dict[line_sn]['1']['stops'][1:])]
-        fig.add_trace(go.Scattermapbox(
-            lat=stops_selected1.lat,
-            lon=stops_selected1.lon,
-            mode='markers',
-            marker=go.scattermapbox.Marker(
-                size=7,
-                color='rgb(108, 173, 245)',
-                opacity=0.7
-            ),
-            text=stops_selected1.id,
-            hoverinfo='text'
-        ))
-        stops_selected2 = stops.loc[stops.id.isin(lines_collected_dict[line_sn]['2']['stops'][1:])]
-        fig.add_trace(go.Scattermapbox(
-            lat=stops_selected2.lat,
-            lon=stops_selected2.lon,
-            mode='markers',
-            marker=go.scattermapbox.Marker(
-                size=7,
-                color='rgb(243, 109, 90)',
-                opacity=0.7
-            ),
-            text=stops_selected2.id,
-            hoverinfo='text'
-        ))
-        #Add lines to the figure
-        for line in [line1,line2] :
-            color = 'rgb(108, 173, 245)' if line.iloc[0].direction == 1 else 'rgb(243, 109, 90)'
-            fig.add_trace(go.Scattermapbox(
-                lat=line.lat,
-                lon=line.lon,
-                mode='lines',
-                line=dict(width=1.5, color=color),
-                text='Línea : {}-{}'.format(line_sn,line.iloc[0].direction),
-                hoverinfo='text'
-            ))
-
-        #And set the figure layout
-        fig.update_layout(
-            title='REAL TIME POSITION OF THE BUSES OF LINE {}'.format(line_sn),
-            height=500,
-            margin=dict(r=0, l=0, t=0, b=0),
-            hovermode='closest',
-            showlegend=False,
-            mapbox=dict(
-                accesstoken=mapbox_access_token,
-                bearing=0,
-                center=dict(
-                    lat=center_y,
-                    lon=center_x
-                ),
-                pitch=0,
-                zoom=12.5,
-                style=style
-            )
-        )
-        #Clear null values (coords not given)
-        given_coords_list = arrival_time_data.given_coords.tolist()
-        dist_list = arrival_time_data.distance.tolist()
-        pop_list = []
-        for i in range(0,len(buses_list)) :
-            if given_coords_list[i]==0 :
-                pop_list.append(i)
-        for index in sorted(pop_list, reverse=True):
-            del buses_list[index]
-            del dist_list[index]
-
-        #We create the figure object
-        fig2 = go.Figure()
-        fig2.add_trace(go.Bar(x=buses_list,
-            y=dist_list,
-            name='Error bar graph',
-            marker_color='#2ca02c'
-        ))
-        fig2.update_layout(
-            height=500,
-            margin=dict(r=0, l=0, t=0, b=0),
-            yaxis=dict(
-                title='Distance(meters) between calculated distance and given one'
-            )
-        )
-
-        #And finally we return the graph element
-        return [
-            html.Div(className='columns',children=[
-                html.Div(className='column is-two-thirds',children=[
-                    html.H2(
-                        'Live position of line {} buses'.format(line_sn),
-                        className = 'subtitle is-4'
-                    ),
-                    dcc.Graph(
-                        id = 'graph',
-                        figure = fig
-                    )
-                ]),
-                html.Div(className='column',children=[
-                    html.H2(
-                        'Error in calculated position:',
-                        className = 'subtitle is-4'
-                    ),
-                    dcc.Graph(
-                        id = 'graph2',
-                        figure = fig2
-                    )
+            tab = dcc.Tab(label=lines[i],children = [
+                html.Div(className='columns',children=[
+                    html.Div(className='column is-half',children=[
+                        dcc.Graph(
+                            id = 'map-{}'.format(lines[i]),
+                            figure = maps[i]
+                        )
+                    ]),
+                    html.Div(className='column is-half',children=[
+                        dcc.Graph(
+                            id = 'graph-{}'.format(lines[i]),
+                            figure = graphs[i]
+                        )
+                    ])
                 ])
-            ]),
-        ]
-    except ValueError :
-        return 'No active buses were found in the desired line - Maybe the line is not active at the moment'
-    except :
-        #If there is an error we ask for a valid line id
-        return 'Please select a lineId from the list'
+            ])
+        tabs.append(tab)
+
+    #And return all of them
+    return [
+        dcc.Tabs(tabs)
+    ]
+
