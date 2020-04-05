@@ -66,6 +66,8 @@ layout = html.Div(className = '', children = [
 
     html.Div(className = 'box', children = [
         html.H1('LIVE DATA MONITORING',className = 'title is-3'),
+        html.H2('Direction 1 (from A to B) of the lines is represented in blue, and direction 2 in red. The stops are represented in green and \
+        each bus has an unique color asociated.',className = 'subtitle is-4'),
         html.Div(className='box',id='live-update-data'),
         dcc.Interval(
             id='interval-component',
@@ -182,7 +184,6 @@ def process_headways(int_df) :
     #Concatenate and group them
     stops_df = pd.concat(stop_df_list)
 
-
     #Group by bus and destination
     stops_df = stops_df.groupby(['bus','destination']).mean().sort_values(by=['estimateArrive'])
     stops_df = stops_df.reset_index().drop_duplicates('bus',keep='first').sort_values(by=['destination'])
@@ -196,8 +197,8 @@ def process_headways(int_df) :
         for i in range(stops_df.shape[0]) :
             est1 = stops_df.iloc[i]
 
-            direction = '1' if est1.destination == dest1 else '2'
-            if ((direction == '1') & (hw_pos1 == 0)) or ((direction == '2') & (hw_pos2 == 0))  :
+            direction = 1 if est1.destination == dest1 else 2
+            if ((direction == 1) & (hw_pos1 == 0)) or ((direction == 2) & (hw_pos2 == 0))  :
                 #Create dataframe row
                 row = {}
                 row['datetime'] = actual_time
@@ -213,7 +214,7 @@ def process_headways(int_df) :
                 rows_list.append(row)
 
                 #Increment hw pos
-                if direction == '1' :
+                if direction == 1 :
                     hw_pos1 += 1
                 else :
                     hw_pos2 += 1
@@ -241,7 +242,7 @@ def process_headways(int_df) :
                 rows_list.append(row)
 
                 #Increment hw pos
-                if direction == '1' :
+                if direction == 1 :
                     hw_pos1 += 1
                 else :
                     hw_pos2 += 1
@@ -311,7 +312,7 @@ def build_map(line_df) :
         text=line_stops.id,
         hoverinfo='text'
     ))
-
+    
     #Add lines to the figure
     for line_shape in [line1,line2] :
         color = 'rgb(108, 173, 245)' if line_shape.iloc[0].direction == 1 else 'rgb(243, 109, 90)'
@@ -326,7 +327,7 @@ def build_map(line_df) :
 
     #And set the figure layout
     new_map.update_layout(
-        title='BUSES POSITION',
+        title='<b>BUSES POSITION</b>',
         height=500,
         margin=dict(r=0, l=0, t=50, b=0),
         hovermode='closest',
@@ -353,61 +354,77 @@ def build_graph(line_df) :
     if line_df.shape[0] < 1 :
         return 'EMPTY'
     
+    #Process headways
     headways = process_headways(line_df)
-    
-    #Max dists
-    hw1 = headways.loc[headways.direction == '1']
-    hw2 = headways.loc[headways.direction == '2']
-    if hw1.shape[0] == 0 :
-        max_dist1 = 0
-    else :
-        max_dist1 = hw1.busB_ttls.max()
-    if hw2.shape[0] == 0 :
-        max_dist2 = 0
-    else :
-        max_dist2 = hw2.busB_ttls.max()
     
     #Create figure object
     graph = go.Figure()
     
+    #Destinations
+    line = line_df.line.iloc[0]
+    dest2,dest1 = lines_collected_dict[line]['destinations']
+    
+    #Max dists
+    hw1 = headways.loc[headways.direction == 1]
+    hw2 = headways.loc[headways.direction == 2]
+    if hw1.shape[0] == 0 :
+        max_dist1 = 0
+    else :
+        max_dist1 = hw1.busB_ttls.max()
+        #Add trace
+        graph.add_trace(go.Scatter(
+            x=hw1.busB_ttls,
+            y=[('To: ' + dest1) for direction in hw1.direction.tolist()],
+            mode='lines+markers',
+            line=dict(width=1.5, color='rgb(108, 173, 245)'),
+            showlegend=False
+        ))
+        
+    if hw2.shape[0] == 0 :
+        max_dist2 = 0
+    else :
+        max_dist2 = hw2.busB_ttls.max()
+        #Add trace
+        graph.add_trace(go.Scatter(
+            x=hw2.busB_ttls,
+            y=[('To: ' + dest2) for direction in hw2.direction.tolist()],
+            mode='lines+markers',
+            line=dict(width=1.5, color='rgb(243, 109, 90)'),
+            showlegend=False
+        ))
+
     #Add buses to graph
     for bus in headways.itertuples() :
         #Assign color based on bus id
         color = colors[bus.busB%len(colors)]
         
-        y = int(bus.direction) 
-        if y == 1 :
-            x = bus.busB_ttls
+        if bus.direction == 1 :
+            dest = dest1 
         else :
-            x = max_dist2 - bus.busB_ttls
-        
+            dest = dest2
+            
         #Add marker
         graph.add_trace(go.Scatter(
             mode='markers',
             name=bus.busB,
-            x=[x],
-            y=[y],
+            x=[bus.busB_ttls],
+            y=['To: ' + dest],
             marker=dict(
                 size=20,
                 color=color
             ),
-            text=[str(bus.busB)],
+            text=[str(bus.headway)+' seconds to next bus'],
             hoverinfo='text'
         ))
         
     #Set title and layout
     graph.update_layout(
-        title='HEADWAYS',
+        title='<b>HEADWAYS</b>',
+        legend_title='<b>Bus ids</b>',
         xaxis = dict(
-            title_text = 'Seconds',
+            title_text = 'Seconds remaining to last stop of the line',
             nticks=20
         ),
-        yaxis = dict(
-            title_text = 'Direction',
-            range = [0.5,2.5]
-        ),
-        xaxis_title='Seconds',
-        yaxis_title='Direction',
         height=500,
         margin=dict(r=0, l=0, t=50, b=0),
         hovermode='closest'
