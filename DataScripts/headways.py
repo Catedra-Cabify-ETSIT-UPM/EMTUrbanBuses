@@ -83,17 +83,18 @@ def process_day_df(line_df,date) :
                 #All stops of the line
                 stops = stops1 + stops2
                 stop_df_list = []
-                dest,direction = dest1,'1'
+                buses_out1,buses_out2 = [],[]
+                dest,direction = dest1,1
                 for i in range(len(stops)) :
                     stop = stops[i]
                     if i == 0 :
                         mean_time_to_stop = 0
                     elif i == len(stops1) :
                         mean_time_to_stop = 0
-                        dest,direction = dest2,'2'
+                        dest,direction = dest2,2
                     else :
                         mean_df = tims_bt_stops.loc[(tims_bt_stops.stopA == int(stop)) & \
-                                        (tims_bt_stops.direction == int(direction))]
+                                        (tims_bt_stops.direction == direction)]
                         if mean_df.shape[0] > 0 :
                             mean_time_to_stop += mean_df.iloc[0].trip_time
                         else :
@@ -106,80 +107,87 @@ def process_day_df(line_df,date) :
                     stop_df = stop_df.drop_duplicates('bus',keep='first')
 
                     if (stop == stops1[-1]) or (stop == stops2[-1]) :
-                        if direction == '1' :
-                            buses_out1 = stop_df.bus.unique().tolist()
+                        if direction == 1 :
+                            buses_out1 += stop_df.bus.unique().tolist()
                         else :
-                            buses_out2 = stop_df.bus.unique().tolist()
+                            buses_out2 += stop_df.bus.unique().tolist()
+                    if (stop == stops1[0]) or (stop == stops2[0]) :
+                        buses_near = stop_df.loc[stop_df.estimateArrive < 10]
+                        if buses_near.shape[0] > 0 :
+                            if direction == 1 :
+                                buses_out1 += buses_near.bus.unique().tolist()
+                            else :
+                                buses_out2 += buses_near.bus.unique().tolist()
                     else :
                         stop_df.estimateArrive = stop_df.estimateArrive + mean_time_to_stop
                         stop_df_list.append(stop_df)
-
+                        
                 #Concatenate and group them
-                stops_df = pd.concat(stop_df_list)
+                if len(stop_df_list)>0:
+                    stops_df = pd.concat(stop_df_list)
+                    
+                    #Group by bus and destination
+                    stops_df = stops_df.groupby(['bus','destination']).mean().sort_values(by=['estimateArrive'])
+                    stops_df = stops_df.reset_index().drop_duplicates('bus',keep='first').sort_values(by=['destination'])
+                    #Loc buses not given by first stop
+                    stops_df = stops_df.loc[((stops_df.destination == dest1) & (~stops_df.bus.isin(buses_out1))) | \
+                                            ((stops_df.destination == dest2) & (~stops_df.bus.isin(buses_out2))) ]
+                    #Calculate time intervals
+                    if stops_df.shape[0] > 0 :
+                        hw_pos1 = 0
+                        hw_pos2 = 0
+                        for i in range(stops_df.shape[0]) :
+                            est1 = stops_df.iloc[i]
 
+                            direction = 1 if est1.destination == dest1 else 2
+                            if ((direction == 1) & (hw_pos1 == 0)) or ((direction == 2) & (hw_pos2 == 0))  :
+                                #Create dataframe row
+                                row = {}
+                                row['datetime'] = actual_date
+                                row['line'] = line
+                                row['direction'] = direction
+                                row['busA'] = 0
+                                row['busB'] = est1.bus
+                                row['hw_pos'] = 0
+                                row['headway'] = 0
+                                row['busB_ttls'] = int(est1.estimateArrive)
 
-                #Group by bus and destination
-                stops_df = stops_df.groupby(['bus','destination']).mean().sort_values(by=['estimateArrive'])
-                stops_df = stops_df.reset_index().drop_duplicates('bus',keep='first').sort_values(by=['destination'])
-                #Loc buses not given by first stop
-                stops_df = stops_df.loc[((stops_df.destination == dest1) & (~stops_df.bus.isin(buses_out1))) | \
-                                        ((stops_df.destination == dest2) & (~stops_df.bus.isin(buses_out2))) ]
-                #Calculate time intervals
-                if stops_df.shape[0] > 0 :
-                    hw_pos1 = 0
-                    hw_pos2 = 0
-                    for i in range(stops_df.shape[0]) :
-                        est1 = stops_df.iloc[i]
+                                #Append row to the list of rows
+                                rows_list.append(row)
 
-                        direction = '1' if est1.destination == dest1 else '2'
-                        if ((direction == '1') & (hw_pos1 == 0)) or ((direction == '2') & (hw_pos2 == 0))  :
-                            #Create dataframe row
-                            row = {}
-                            row['datetime'] = actual_date
-                            row['line'] = line
-                            row['direction'] = direction
-                            row['busA'] = 0
-                            row['busB'] = est1.bus
-                            row['hw_pos'] = 0
-                            row['headway'] = 0
-                            row['busB_ttls'] = int(est1.estimateArrive)
+                                #Increment hw pos
+                                if direction == 1 :
+                                    hw_pos1 += 1
+                                else :
+                                    hw_pos2 += 1
 
-                            #Append row to the list of rows
-                            rows_list.append(row)
-
-                            #Increment hw pos
-                            if direction == '1' :
-                                hw_pos1 += 1
+                            if i < (stops_df.shape[0] - 1) :
+                                est2 = stops_df.iloc[i+1]
                             else :
-                                hw_pos2 += 1
+                                break
 
-                        if i < (stops_df.shape[0] - 1) :
-                            est2 = stops_df.iloc[i+1]
-                        else :
-                            break
+                            if est1.destination == est2.destination :
+                                headway = int(est2.estimateArrive-est1.estimateArrive)
 
-                        if est1.destination == est2.destination :
-                            headway = int(est2.estimateArrive-est1.estimateArrive)
+                                #Create dataframe row
+                                row = {}
+                                row['datetime'] = actual_date
+                                row['line'] = line
+                                row['direction'] = direction
+                                row['busA'] = est1.bus
+                                row['busB'] = est2.bus
+                                row['hw_pos'] = hw_pos1 if direction == 1 else hw_pos2
+                                row['headway'] = headway
+                                row['busB_ttls'] = int(est2.estimateArrive)
 
-                            #Create dataframe row
-                            row = {}
-                            row['datetime'] = actual_date
-                            row['line'] = line
-                            row['direction'] = direction
-                            row['busA'] = est1.bus
-                            row['busB'] = est2.bus
-                            row['hw_pos'] = hw_pos1 if direction == '1' else hw_pos2
-                            row['headway'] = headway
-                            row['busB_ttls'] = int(est2.estimateArrive)
+                                #Append row to the list of rows
+                                rows_list.append(row)
 
-                            #Append row to the list of rows
-                            rows_list.append(row)
-
-                            #Increment hw pos
-                            if direction == '1' :
-                                hw_pos1 += 1
-                            else :
-                                hw_pos2 += 1
+                                #Increment hw pos
+                                if direction == 1 :
+                                    hw_pos1 += 1
+                                else :
+                                    hw_pos2 += 1
 
             #Update iteration interval
             next_df = day_df.loc[(day_df.datetime > end_interval) & \
@@ -213,7 +221,7 @@ def get_headways(df) :
     for line in lines :
         line_df = df.loc[df.line == line]
         dates = line_df.datetime.dt.date.unique()
-        dfs = (Parallel(n_jobs=num_cores)(delayed(process_day_df)(line_df,date) for date in dates))
+        dfs = (Parallel(n_jobs=num_cores,max_nbytes=None)(delayed(process_day_df)(line_df,date) for date in dates))
         dfs_list += dfs
 
     #Concatenate dataframes

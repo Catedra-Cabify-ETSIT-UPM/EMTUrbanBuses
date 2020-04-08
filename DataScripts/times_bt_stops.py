@@ -140,7 +140,7 @@ def get_time_between_stops(df) :
     for line in lines :
         hours = range(0,6) if line in ['N2','N6'] else range(7,23)
         line_df = df.loc[df.line == line]
-        dfs = (Parallel(n_jobs=num_cores)(delayed(process_hour_df)(line_df,hour) for hour in hours))
+        dfs = (Parallel(n_jobs=num_cores,max_nbytes=None)(delayed(process_hour_df)(line_df,hour) for hour in hours))
         dfs_list += dfs
 
     #Concatenate dataframes

@@ -188,10 +188,11 @@ def clean_data(df,preprocess) :
                     (row.DistanceBus < int(lines_collected_dict[row.line][direction]['length']))
 
         # estimateArrive values lower than the time it takes to go through the line at an speed
-        # of 2m/s, instantaneous speed lower than 120 km/h and positive values
+        # of 2m/s, instantaneous speed lower than 120 km/h and positive values and time remaining lower than 2 hours
         eta_cond = (row.estimateArrive > 0) and \
                    (row.estimateArrive < (int(lines_collected_dict[row.line][direction]['length'])/2)) and \
-                   (3.6*row.DistanceBus/row.estimateArrive) < 120
+                   ((3.6*row.DistanceBus/row.estimateArrive) < 120) & \
+                   (row.estimateArrive < 7200)
 
         return line_dest_stop_cond and dist_cond and eta_cond
 

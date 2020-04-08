@@ -149,17 +149,18 @@ def process_headways(int_df) :
     #All stops of the line
     stops = stops1 + stops2
     stop_df_list = []
-    dest,direction = dest1,'1'
+    buses_out1,buses_out2 = [],[]
+    dest,direction = dest1,1
     for i in range(len(stops)) :
         stop = stops[i]
         if i == 0 :
             mean_time_to_stop = 0
         elif i == len(stops1) :
             mean_time_to_stop = 0
-            dest,direction = dest2,'2'
+            dest,direction = dest2,2
         else :
             mean_df = tims_bt_stops.loc[(tims_bt_stops.stopA == int(stop)) & \
-                            (tims_bt_stops.direction == int(direction))]
+                            (tims_bt_stops.direction == direction)]
             if mean_df.shape[0] > 0 :
                 mean_time_to_stop += mean_df.iloc[0].trip_time
             else :
@@ -171,16 +172,22 @@ def process_headways(int_df) :
         #Drop duplicates, recalculate estimateArrive and append to list
         stop_df = stop_df.drop_duplicates('bus',keep='first')
         
-        buses_out1,buses_out2 = [],[]
         if (stop == stops1[-1]) or (stop == stops2[-1]) :
-            if direction == '1' :
-                buses_out1 = stop_df.bus.unique().tolist()
+            if direction == 1 :
+                buses_out1 += stop_df.bus.unique().tolist()
             else :
-                buses_out2 = stop_df.bus.unique().tolist()
+                buses_out2 += stop_df.bus.unique().tolist()
+        if (stop == stops1[0]) or (stop == stops2[0]) :
+            buses_near = stop_df.loc[stop_df.estimateArrive < 5]
+            if buses_near.shape[0] > 0 :
+                if direction == 1 :
+                    buses_out1 += buses_near.bus.unique().tolist()
+                else :
+                    buses_out2 += buses_near.bus.unique().tolist()
         else :
             stop_df.estimateArrive = stop_df.estimateArrive + mean_time_to_stop
             stop_df_list.append(stop_df)
-
+            
     #Concatenate and group them
     stops_df = pd.concat(stop_df_list)
 
@@ -190,6 +197,7 @@ def process_headways(int_df) :
     #Loc buses not given by first stop
     stops_df = stops_df.loc[((stops_df.destination == dest1) & (~stops_df.bus.isin(buses_out1))) | \
                             ((stops_df.destination == dest2) & (~stops_df.bus.isin(buses_out2))) ]
+    
     #Calculate time intervals
     if stops_df.shape[0] > 0 :
         hw_pos1 = 0
