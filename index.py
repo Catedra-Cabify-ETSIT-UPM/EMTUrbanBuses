@@ -3,7 +3,7 @@ import dash_html_components as html
 from dash.dependencies import Input, Output
 
 from app import app
-from apps import app_home, app_credits, app1, app2
+from apps import app_home, app_credits, app1
 
 #APP INDEX STRING
 app.index_string = '''

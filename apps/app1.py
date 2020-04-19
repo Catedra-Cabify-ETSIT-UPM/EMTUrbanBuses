@@ -1,5 +1,7 @@
 import dash_core_components as dcc
 import dash_html_components as html
+import dash_table
+
 from dash.dependencies import Input, Output
 
 import pandas as pd
@@ -9,6 +11,10 @@ import plotly.graph_objects as go
 import plotly.io as pio
 
 import math
+
+from scipy import stats
+from scipy.spatial.distance import mahalanobis
+from scipy.stats.distributions import chi2
 
 from app import app
 
@@ -27,16 +33,16 @@ colors = [
 ]
 
 zooms = {
-    '1': 12.8,
-    '44': 13,
-    '82': 13,
-    'F': 14,
-    'G': 14,
-    'U': 14,
-    '132': 13,
-    '133': 13,
-    'N2': 12.5,
-    'N6': 12.5,
+    '1': 12.3,
+    '44': 11.8,
+    '82': 11.8,
+    'F': 13,
+    'G': 13,
+    'U': 13,
+    '132': 11.5,
+    '133': 11.5,
+    'N2': 11.5,
+    'N6': 11.5,
 }
 
 # WE LOAD THE DATA
@@ -64,10 +70,7 @@ times_bt_stops['date'] = pd.to_datetime(times_bt_stops['date'], format='%Y-%m-%d
 
 layout = html.Div(className = '', children = [
 
-    html.Div(className = 'box', children = [
-        html.H1('LIVE DATA MONITORING',className = 'title is-3'),
-        html.H2('Direction 1 (from A to B) of the lines is represented in blue, and direction 2 in red. The stops are represented in green and \
-        each bus has an unique color asociated.',className = 'subtitle is-4'),
+    html.Div(className = '', children = [
         html.Div(className='box',id='live-update-data'),
         dcc.Interval(
             id='interval-component',
@@ -122,140 +125,7 @@ def find_nearest_row_by_dist(df,dist_traveled) :
         nearest_row = df.iloc[0]
     return nearest_row
 
-def process_headways(int_df) :
-    rows_list = []
-    #Burst time
-    actual_time = int_df.iloc[0].datetime
-    
-    #Line
-    line = int_df.iloc[0].line
-    
-    #Stops of each line reversed
-    stops1 = lines_collected_dict[line]['1']['stops'][-2::-1]
-    stops2 = lines_collected_dict[line]['2']['stops'][-2::-1]
-    
-    #Assign destination values
-    dest2,dest1 = lines_collected_dict[line]['destinations']
-    
-    #Process mean times between stops
-    tims_bt_stops = times_bt_stops.loc[(times_bt_stops.line == line) & \
-                                        (times_bt_stops.date.dt.weekday == actual_time.weekday()) & \
-                                        (times_bt_stops.st_hour >= actual_time.hour) & \
-                                        (times_bt_stops.st_hour <= actual_time.hour + 3)]
-    #Group and get the mean values
-    tims_bt_stops = tims_bt_stops.groupby(['line','direction','stopA','stopB']).mean()
-    tims_bt_stops = tims_bt_stops.reset_index()[['line','direction','stopA','stopB','trip_time','api_trip_time']]
 
-    #All stops of the line
-    stops = stops1 + stops2
-    stop_df_list = []
-    buses_out1,buses_out2 = [],[]
-    dest,direction = dest1,1
-    for i in range(len(stops)) :
-        stop = stops[i]
-        if i == 0 :
-            mean_time_to_stop = 0
-        elif i == len(stops1) :
-            mean_time_to_stop = 0
-            dest,direction = dest2,2
-        else :
-            mean_df = tims_bt_stops.loc[(tims_bt_stops.stopA == int(stop)) & \
-                            (tims_bt_stops.direction == direction)]
-            if mean_df.shape[0] > 0 :
-                mean_time_to_stop += mean_df.iloc[0].trip_time
-            else :
-                break
-
-        stop_df = int_df.loc[(int_df.stop == int(stop)) & \
-                            (int_df.destination == dest)]
-
-        #Drop duplicates, recalculate estimateArrive and append to list
-        stop_df = stop_df.drop_duplicates('bus',keep='first')
-        
-        if (stop == stops1[-1]) or (stop == stops2[-1]) :
-            if direction == 1 :
-                buses_out1 += stop_df.bus.unique().tolist()
-            else :
-                buses_out2 += stop_df.bus.unique().tolist()
-        if (stop == stops1[0]) or (stop == stops2[0]) :
-            buses_near = stop_df.loc[stop_df.estimateArrive < 5]
-            if buses_near.shape[0] > 0 :
-                if direction == 1 :
-                    buses_out1 += buses_near.bus.unique().tolist()
-                else :
-                    buses_out2 += buses_near.bus.unique().tolist()
-        else :
-            stop_df.estimateArrive = stop_df.estimateArrive + mean_time_to_stop
-            stop_df_list.append(stop_df)
-            
-    #Concatenate and group them
-    stops_df = pd.concat(stop_df_list)
-
-    #Group by bus and destination
-    stops_df = stops_df.groupby(['bus','destination']).mean().sort_values(by=['estimateArrive'])
-    stops_df = stops_df.reset_index().drop_duplicates('bus',keep='first').sort_values(by=['destination'])
-    #Loc buses not given by first stop
-    stops_df = stops_df.loc[((stops_df.destination == dest1) & (~stops_df.bus.isin(buses_out1))) | \
-                            ((stops_df.destination == dest2) & (~stops_df.bus.isin(buses_out2))) ]
-    
-    #Calculate time intervals
-    if stops_df.shape[0] > 0 :
-        hw_pos1 = 0
-        hw_pos2 = 0
-        for i in range(stops_df.shape[0]) :
-            est1 = stops_df.iloc[i]
-
-            direction = 1 if est1.destination == dest1 else 2
-            if ((direction == 1) & (hw_pos1 == 0)) or ((direction == 2) & (hw_pos2 == 0))  :
-                #Create dataframe row
-                row = {}
-                row['datetime'] = actual_time
-                row['line'] = line
-                row['direction'] = direction
-                row['busA'] = 0
-                row['busB'] = est1.bus
-                row['hw_pos'] = 0
-                row['headway'] = 0
-                row['busB_ttls'] = int(est1.estimateArrive)
-
-                #Append row to the list of rows
-                rows_list.append(row)
-
-                #Increment hw pos
-                if direction == 1 :
-                    hw_pos1 += 1
-                else :
-                    hw_pos2 += 1
-
-            if i < (stops_df.shape[0] - 1) :
-                est2 = stops_df.iloc[i+1]
-            else :
-                break
-
-            if est1.destination == est2.destination :
-                headway = int(est2.estimateArrive-est1.estimateArrive)
-
-                #Create dataframe row
-                row = {}
-                row['datetime'] = actual_time
-                row['line'] = line
-                row['direction'] = direction
-                row['busA'] = est1.bus
-                row['busB'] = est2.bus
-                row['hw_pos'] = hw_pos1 if direction == '1' else hw_pos2
-                row['headway'] = headway
-                row['busB_ttls'] = int(est2.estimateArrive)
-
-                #Append row to the list of rows
-                rows_list.append(row)
-
-                #Increment hw pos
-                if direction == 1 :
-                    hw_pos1 += 1
-                else :
-                    hw_pos2 += 1
-                    
-    return pd.DataFrame(rows_list)
                     
 def build_map(line_df) :
     '''
@@ -279,6 +149,26 @@ def build_map(line_df) :
 
     #We create the figure object
     new_map = go.Figure()
+    
+    #And set the figure layout
+    new_map.update_layout(
+        title='<b>BUSES POSITION</b>',
+        height=350,
+        margin=dict(r=0, l=0, t=40, b=0),
+        hovermode='closest',
+        showlegend=False,
+        mapbox=dict(
+            accesstoken=mapbox_access_token,
+            bearing=0,
+            center=dict(
+                lat=center_y,
+                lon=center_x
+            ),
+            pitch=0,
+            zoom=zooms[line],
+            style=style
+        )
+    )
     
     #Add the bus points to the figure
     for bus in line_df.itertuples() :
@@ -333,43 +223,39 @@ def build_map(line_df) :
             hoverinfo='text'
         ))
 
-    #And set the figure layout
-    new_map.update_layout(
-        title='<b>BUSES POSITION</b>',
-        height=500,
-        margin=dict(r=0, l=0, t=50, b=0),
-        hovermode='closest',
-        showlegend=False,
-        mapbox=dict(
-            accesstoken=mapbox_access_token,
-            bearing=0,
-            center=dict(
-                lat=center_y,
-                lon=center_x
-            ),
-            pitch=0,
-            zoom=zooms[line],
-            style=style
-        )
-    )
     #And finally we return the map
     return new_map
 
-def build_graph(line_df) :
+
+def build_graph(line_hws) :
     '''
     Returns a figure with the graph of headways between buses
     '''
-    if line_df.shape[0] < 1 :
-        return 'EMPTY'
     
     #Process headways
-    headways = process_headways(line_df)
+    headways = line_hws
     
     #Create figure object
     graph = go.Figure()
     
+    #Set title and layout
+    graph.update_layout(
+        title='<b>HEADWAYS</b>',
+        legend_title='<b>Bus ids</b>',
+        xaxis = dict(
+            title_text = 'Seconds remaining to last stop of the line',
+            nticks=20
+        ),
+        height=350,
+        margin=dict(r=0, l=0, t=40, b=0),
+        hovermode='closest'
+    )
+    
+    if headways.shape[0] < 1 :
+        return graph
+    
     #Destinations
-    line = line_df.line.iloc[0]
+    line = headways.line.iloc[0]
     dest2,dest1 = lines_collected_dict[line]['destinations']
     
     #Max dists
@@ -425,21 +311,153 @@ def build_graph(line_df) :
             hoverinfo='text'
         ))
         
-    #Set title and layout
-    graph.update_layout(
-        title='<b>HEADWAYS</b>',
-        legend_title='<b>Bus ids</b>',
-        xaxis = dict(
-            title_text = 'Seconds remaining to last stop of the line',
-            nticks=20
-        ),
-        height=500,
-        margin=dict(r=0, l=0, t=50, b=0),
-        hovermode='closest'
-    )
-        
     #Finally we return the graph
     return graph
+
+
+def build_m_dist_graph(series_df) :
+    
+    graph = go.Figure()
+    
+    #Set title and layout
+    graph.update_layout(
+        title='<b>MAHALANOBIS DISTANCE</b>',
+        legend_title='<b>Group ids</b>',
+        xaxis = dict(
+            nticks=20
+        ),
+        yaxis = dict(
+            title_text = 'Mahalanobis Distance',
+            nticks=20
+        ),
+        height=350,
+        margin=dict(r=0, l=0, t=40, b=0),
+        hovermode='closest'
+    )
+    
+    if series_df.shape[0] < 1 :
+        return graph
+    
+    #All bus names
+    bus_names_all = ['bus' + str(i) for i in range(1,8+2)]
+    hw_names_all = ['hw' + str(i) + str(i+1) for i in range(1,8+1)]
+    
+    #Min and max datetimes
+    min_time = series_df.datetime.min()
+    max_time = series_df.datetime.max()
+    
+    #Locate unique groups
+    unique_groups = []
+    unique_groups_df = series_df.drop_duplicates(bus_names_all)
+    for i in range(unique_groups_df.shape[0]):
+        group = [unique_groups_df.iloc[i][bus_names_all[k]] for k in range(8+1)]
+        unique_groups.append(group)
+    
+    last_dim = 0
+    for group in unique_groups :
+        #Build indexing conditions
+        conds = [series_df[bus_names_all[k]] == group[k] for k in range(8+1)]
+        final_cond = True
+        for cond in conds :
+            final_cond &= cond
+        group_df = series_df.loc[final_cond]
+        group_df = group_df.sort_values('datetime')
+        
+        #Dimension
+        dim = group_df.iloc[0].dim
+        color = colors[dim]
+        
+        #Dim threshold
+        conf = 0.95
+        m_th = math.sqrt(chi2.ppf(conf, df=dim))
+        
+        if dim != last_dim :
+            graph.add_shape(
+                name='{}Dim MD Threshold'.format(dim),
+                type='line',
+                x0=min_time,
+                y0=m_th,
+                x1=max_time,
+                y1=m_th,
+                line=dict(
+                    color=color,
+                    width=2,
+                    dash='dashdot',
+                ),
+            )
+        
+        last_dim = dim
+        
+        name = str(group[0])
+        for bus in group[1:] :
+            if bus != 0 :
+                name+='-'+str(bus) 
+            else :
+                break
+        
+        #Build group trace
+        graph.add_trace(go.Scatter(
+            name=name,
+            x=group_df.datetime,
+            y=group_df.m_dist,
+            mode='lines+markers',
+            line=dict(width=1.5, color=color)
+        ))
+    
+    return graph
+            
+
+
+def build_anoms_table(anomalies_df) :
+    
+    #All bus names
+    bus_names_all = ['bus' + str(i) for i in range(1,8+2)]
+    hw_names_all = ['hw' + str(i) + str(i+1) for i in range(1,8+1)]
+    
+    if anomalies_df.shape[0] < 1 :
+        return 'No anomalies were detected yet.'
+    
+    #Drop group duplicates
+    anomalies_df = anomalies_df.sort_values('datetime',ascending=False).drop_duplicates(bus_names_all,keep='first')
+    
+    #Build group names
+    names = []
+    for i in range(anomalies_df.shape[0]):
+        group = [anomalies_df.iloc[i][bus_names_all[k]] for k in range(8+1)]
+        name = str(group[0])
+        for bus in group[1:] :
+            if bus != 0 :
+                name+='-'+str(bus) 
+            else :
+                break
+    
+        names.append(name)
+        
+    anomalies_df['group'] = names
+    anomalies_df = anomalies_df[['dim','group','anom_size','datetime']]
+    
+    table = dash_table.DataTable(
+        id='table',
+        filter_action='native',
+        sort_action='native',
+        page_size= 5,
+        style_header={
+            'color':'white',
+            'backgroundColor': 'lightseagreen'
+        },
+        style_cell={
+            'padding': '3px',
+            'width': 'auto',
+            'textAlign': 'center',
+            'overflow': 'hidden',
+            'textOverflow': 'ellipsis',
+        },
+        columns=[{"name": i, "id": i} for i in anomalies_df.columns],
+        data=anomalies_df.to_dict('records')
+    )
+    
+    return table
+
 
 
 # CALLBACKS
@@ -475,22 +493,59 @@ def update_graph_live(n_intervals) :
     #Parse the dates
     burst['datetime'] = pd.to_datetime(burst['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
 
+        
+    #Read last processed headways
+    hws_burst = pd.read_csv('ProcessedData/headways_burst.csv',
+        dtype={
+            'line': 'str',
+            'direction': 'uint16',
+            'busA': 'uint16',
+            'busB': 'uint16',
+            'headway':'uint16',
+            'busB_ttls':'uint16'
+        }
+    )[['line','direction','datetime','hw_pos','busA','busB','headway','busB_ttls']]
+    
+    #Read last series data
+    series_df = pd.read_csv('ProcessedData/series.csv',
+        dtype={
+            'line': 'str'
+        }
+    )
+    
+    #Read last anomalies data
+    anomalies_df = pd.read_csv('ProcessedData/anomalies.csv',
+        dtype={
+            'line': 'str'
+        }
+    )
+    
+    
     #Lines to iterate over
     lines = ['1','44','82','F','G','U','132','133','N2','N6']
-    maps,graphs = [],[]
+    maps,graphs,m_dist_graphs,anoms_tables = [],[],[],[]
     for line in lines :
         #Line dataframe
         line_df = burst.loc[burst.line == line]
-
+        line_hws = hws_burst.loc[hws_burst.line == line]
+        line_series = series_df.loc[series_df.line == line]
+        line_anoms = anomalies_df.loc[anomalies_df.line == line]
+        
         #Create map
         new_map = build_map(line_df)
         maps.append(new_map)
 
         #Create graph
-        graph = build_graph(line_df)
+        graph = build_graph(line_hws)
         graphs.append(graph)
-
-        #FUTURE : SHOULD CHECK DATA FOR ANOMALIES DETECTION
+        
+        #Create mh dist graph
+        m_dist_graph = build_m_dist_graph(line_series)
+        m_dist_graphs.append(m_dist_graph)
+        
+        #Create anomalies table
+        anoms_table = build_anoms_table(line_anoms)
+        anoms_tables.append(anoms_table)
 
     #Build tag objects
     tabs = []
@@ -498,7 +553,7 @@ def update_graph_live(n_intervals) :
         if maps[i] == 'EMPTY' :
             tab = dcc.Tab(label=lines[i],children = [
                 html.H2('NO BUSES WERE FOUND IN THE LINE',className = 'subtitle is-3')
-            ])
+            ],style={'padding': '0','line-height': '5vh'},selected_style={'padding': '0','line-height': '5vh'})
         else :
             tab = dcc.Tab(label=lines[i],children = [
                 html.Div(className='columns',children=[
@@ -514,12 +569,29 @@ def update_graph_live(n_intervals) :
                             figure = graphs[i]
                         )
                     ])
+                ]),
+                html.Div(className='columns',children=[
+                    html.Div(className='column is-half',children=[
+                        dcc.Graph(
+                            id = 'graph-mdist-{}'.format(lines[i]),
+                            figure = m_dist_graphs[i]
+                        )
+                    ]),
+                    html.Div(className='column is-half',children=[
+                        html.Div([
+                            html.H2('Detected anomalies',className = 'subtitle is-5'),
+                            anoms_tables[i]
+                        ])
+                    ])
                 ])
-            ])
+            ],style={'padding': '0','line-height': '5vh'},selected_style={'padding': '0','line-height': '5vh'})
         tabs.append(tab)
 
     #And return all of them
     return [
-        dcc.Tabs(tabs)
+        dcc.Tabs(tabs,style={
+            'font-size': '150%',
+            'height':'5vh'
+        })
     ]
 
