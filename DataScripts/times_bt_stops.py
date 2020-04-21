@@ -6,11 +6,9 @@ from datetime import timedelta
 
 from sys import argv
 
-from pandarallel import pandarallel
 from joblib import Parallel, delayed
 import multiprocessing
 num_cores = multiprocessing.cpu_count()
-pandarallel.initialize()
 
 
 #Load line_stops_dict

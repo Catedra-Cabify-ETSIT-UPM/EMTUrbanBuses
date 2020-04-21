@@ -6,11 +6,9 @@ from datetime import timedelta
 
 from sys import argv
 
-from pandarallel import pandarallel
 from joblib import Parallel, delayed
 import multiprocessing
 num_cores = multiprocessing.cpu_count()
-pandarallel.initialize()
 
 #Load line_stops_dict
 with open('../M6Data/lines_collected_dict.json', 'r') as f:
@@ -111,7 +109,15 @@ def process_day_df(line_df,date) :
                             buses_out1 += stop_df.bus.unique().tolist()
                         else :
                             buses_out2 += stop_df.bus.unique().tolist()
-                    if (stop == stops1[0]) or (stop == stops2[0]) :
+                    elif (stop == stops1[-2]) or (stop == stops2[-2]) :
+                        stop_dist = int(lines_collected_dict[line][str(direction)]['distances'][stop])
+                        buses_near = stop_df.loc[stop_df.DistanceBus > stop_dist/2]
+                        if buses_near.shape[0] > 0 :
+                            if direction == 1 :
+                                buses_out1 += buses_near.bus.unique().tolist()
+                            else :
+                                buses_out2 += buses_near.bus.unique().tolist()
+                    elif (stop == stops1[0]) or (stop == stops2[0]) :
                         buses_near = stop_df.loc[stop_df.estimateArrive < 10]
                         if buses_near.shape[0] > 0 :
                             if direction == 1 :
@@ -121,11 +127,11 @@ def process_day_df(line_df,date) :
                     else :
                         stop_df.estimateArrive = stop_df.estimateArrive + mean_time_to_stop
                         stop_df_list.append(stop_df)
-                        
+
                 #Concatenate and group them
                 if len(stop_df_list)>0:
                     stops_df = pd.concat(stop_df_list)
-                    
+
                     #Group by bus and destination
                     stops_df = stops_df.groupby(['bus','destination']).mean().sort_values(by=['estimateArrive'])
                     stops_df = stops_df.reset_index().drop_duplicates('bus',keep='first').sort_values(by=['destination'])
