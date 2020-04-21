@@ -16,6 +16,8 @@ import os.path
 
 import time
 
+from sys import argv
+
 
 #Lines collected dictionary
 with open('../M6Data/lines_collected_dict.json', 'r') as f:
@@ -49,6 +51,10 @@ day_type_dict = { #0 = Monday, 1 = Tuesday ...
     'SA' : [5], #SABADOS
     'FE' : [6], #DOMIGOS O FESTIVOS
 }
+
+#Bus and headways column names
+bus_names_all = ['bus' + str(i) for i in range(1,8+2)]
+hw_names_all = ['hw' + str(i) + str(i+1) for i in range(1,8+1)]
 
 #For every burst of data:
 def process_headways(int_df) :
@@ -171,7 +177,7 @@ def process_headways(int_df) :
                 row['direction'] = direction
                 row['busA'] = est1.bus
                 row['busB'] = est2.bus
-                row['hw_pos'] = hw_pos1 if direction == 1 else hw_pos2
+                row['hw_pos'] = hw_pos1 if direction == '1' else hw_pos2
                 row['headway'] = headway
                 row['busB_ttls'] = int(est2.estimateArrive)
 
@@ -197,9 +203,6 @@ def get_ndim_hws (df,dim) :
     names = ['datetime'] + bus_names + hw_names
     for name in names:
         columns[name] = []
-        
-    if df.shape[0] < 1 :
-        return pd.DataFrame(columns=names)
 
     #Unique datetime identifiers for the bursts
     burst_time = df.iloc[0].datetime
@@ -224,10 +227,179 @@ def get_ndim_hws (df,dim) :
 
     return pd.DataFrame(columns)
 
-def process_mh_dist(burst_df,last_burst_df,series_df,conf) :
+
+def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df,conf) :
+    windows_dfs,headways_dfs = [],[]
+    #For every line
+    for line in lines :
+        #Process the headways
+        line_df = burst_df.loc[burst_df.line == line]
+
+        #Calculate headways and append them
+        headways = process_headways(line_df)
+        headways['line'] = line
+        headways_dfs.append(headways)
+
+        #Eliminate hw_pos == 0
+        hws = headways.loc[headways.hw_pos > 0]
+
+        #Max dimensional model trained
+        models = models_params_dict[line][day_type][hour_range]
+        max_dim = models['max_dim']
+
+        #Process windows dfs
+        dim,window_data_points = 1,1
+        while (window_data_points > 0) and (dim <= max_dim) :
+            window_df = get_ndim_hws(hws,dim)
+            window_data_points = window_df.shape[0]
+
+            hw_names = ['hw' + str(i) + str(i+1) for i in range(1,dim+1)]
+            bus_names = ['bus' + str(i) for i in range(1,dim+2)]
+
+            hw_names_rest = ['hw' + str(i) + str(i+1) for i in range(dim+1,8+1)]
+            bus_names_rest = ['bus' + str(i) for i in range(dim+2,8+2)]
+
+            cov_matrix = models[str(dim)]['cov_matrix']
+            mean = models[str(dim)]['mean']
+
+            #Get Mahalanobis distance squared from which a certain percentage of the data is out
+            m_th = math.sqrt(chi2.ppf(conf, df=dim))
+
+            #Inverse of cov matrix
+            if dim > 1:
+                iv = np.linalg.inv(cov_matrix)
+
+            def calc_m_dist(row) :
+                row_hws = row[hw_names]
+                if dim > 1 :
+                    row['m_dist'] = mahalanobis(mean, row_hws, iv)
+                else :
+                    std = cov_matrix
+                    hw_val = row_hws[hw_names[0]]
+                    row['m_dist'] = np.abs(mean - hw_val)/std
+
+                if row['m_dist'] > m_th :
+                    row['anom'] = 1
+                else :
+                    row['anom'] = 0
+
+                return row
+
+            if window_data_points > 0 :
+                #Set columns values
+                window_df = window_df.apply(calc_m_dist,axis=1)
+                window_df['line'] = line
+                window_df['dim'] = dim
+
+                #Set to 0 unused columns
+                for name in hw_names_rest + bus_names_rest :
+                    window_df[name] = 0
+
+                window_df = window_df[['line','datetime','dim','m_dist','anom'] + bus_names + bus_names_rest + hw_names + hw_names_rest]
+                windows_dfs.append(window_df)
+
+            #Increase dim
+            dim += 1
+
+    #Concat them in a dataframe
+    headways_df = pd.concat(headways_dfs)
+    windows_df = pd.concat(windows_dfs)
+
+    return headways_df,windows_df
+
+
+def build_series_anoms(series_df,windows_df) :
+    new_series,anomalies_dfs = [],[]
+    dims = windows_df.dim.unique().tolist()
+    for dim in dims :
+        dim_df = windows_df.loc[windows_df.dim == dim]
+
+        bus_names = ['bus' + str(i) for i in range(1,dim+2)]
+        unique_groups = []
+        for i in range(dim_df.shape[0]):
+            group = [dim_df.iloc[i][bus_names[k]] for k in range(dim+1)]
+            unique_groups.append(group)
+
+        for group in unique_groups :
+            #Build indexing condition
+            conds1 = [dim_df[bus_names[k]] == group[k] for k in range(dim+1)]
+            conds2 = [series_df[bus_names[k]] == group[k] for k in range(dim+1)]
+            final_cond1,final_cond2 = True,True
+
+            for i in range(len(conds1)) :
+                final_cond1 &= conds1[i]
+                final_cond2 &= conds2[i]
+
+            #Current group status
+            group_now = dim_df.loc[final_cond1].iloc[0]
+
+            #Past group status
+            group_df = series_df.loc[final_cond2]
+            if group_df.shape[0] > 0 :
+                group_df = group_df.sort_values('datetime',ascending=False)
+                last_size = group_df.iloc[0].anom_size
+
+                if (group_now['anom'] == 0) and (last_size > 0) :
+                    group_now['anom_size'] = 0
+
+                    #We append the finished anomalies to the anomalies dfs
+                    group_df['anom_size'] = last_size
+                    anomalies_dfs.append(group_df.loc[group_df.anom == 1])
+
+                    #And we drop this rows from series_df
+                    series_df = series_df.loc[~final_cond2]
+                else :
+                    group_now['anom_size'] = last_size + group_now['anom_size']
+            else :
+                group_now['anom_size'] = group_now['anom']
+
+            new_series.append(group_now)
+
+    #Build current series dataframe and append it to the past series
+    new_series_df = pd.DataFrame(new_series)
+    series_df = series_df.append(new_series_df, ignore_index=True)
+
+    return series_df,anomalies_dfs
+
+
+def clean_series(series_df,anomalies_dfs,now) :
+    unique_groups = []
+    unique_groups_df = series_df.drop_duplicates(bus_names_all)
+    for i in range(series_df.shape[0]):
+        group = [series_df.iloc[i][bus_names_all[k]] for k in range(8+1)]
+        unique_groups.append(group)
+
+    for group in unique_groups :
+        #Build indexing conditions
+        conds = [series_df[bus_names_all[k]] == group[k] for k in range(8+1)]
+        final_cond = True
+        for cond in conds :
+            final_cond &= cond
+        group_df = series_df.loc[final_cond]
+
+        if group_df.shape[0] > 0 :
+            group_df = group_df.sort_values('datetime',ascending=False)
+            last_time = group_df.iloc[0].datetime
+            last_size = group_df.iloc[0].anom_size
+
+            seconds_ellapsed = (now - last_time).total_seconds()
+
+            if seconds_ellapsed > 600 :
+                #Delete series from last series df
+                series_df = series_df.loc[~final_cond]
+
+                #If it was an anomaly
+                if last_size > 0 :
+                    group_df['anom_size'] = last_size
+                    anomalies_dfs.append(group_df.loc[group_df.anom == 1])
+
+    return series_df,anomalies_dfs
+
+
+def detect_anomalies(burst_df,last_burst_df,series_df,conf,size_th) :
     #Check if the burst dataframe has changed
     if last_burst_df.equals(burst_df) :
-        #If it hasnt changed we return the last series df
+        #If it hasnt changed we return None
         return None
 
     #Lines to iterate over
@@ -236,9 +408,6 @@ def process_mh_dist(burst_df,last_burst_df,series_df,conf) :
     day_types = ['LA','SA','FE']
     #Hour ranges to iterate over
     hour_ranges = [[7,11], [11,15], [15,19], [19,23]]
-
-    bus_names_all = ['bus' + str(i) for i in range(1,8+2)]
-    hw_names_all = ['hw' + str(i) + str(i+1) for i in range(1,8+1)]
 
     #Detect day type and hour range from current datetime
     now = dt.now()
@@ -255,192 +424,46 @@ def process_mh_dist(burst_df,last_burst_df,series_df,conf) :
             hour_range = str(h_range[0]) + '-' + str(h_range[1])
             break
 
-    windows_dfs,headways_dfs = [],[]
-    for line in lines :
-        #Process the headways
-        line_df = burst_df.loc[burst_df.line == line]
+    #Process headways and build dimensional dataframes
+    headways_df,windows_df = process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df,conf)
 
-        #Calculate headways and append them
-        headways = process_headways(line_df)
-        
-        if headways.shape[0] > 0:
-            
-            headways['line'] = line
-            headways_dfs.append(headways)
-            
-            #Eliminate hw_pos == 0
-            hws = headways.loc[headways.hw_pos > 0]
-
-            #Max dimensional model trained
-            models = models_params_dict[line][day_type][hour_range]
-            max_dim = models['max_dim']
-
-            #Process windows dfs
-            dim,window_data_points = 1,1
-            while (window_data_points > 0) and (dim <= max_dim) :
-                window_df = get_ndim_hws(hws,dim)
-                window_data_points = window_df.shape[0]
-                
-                hw_names = ['hw' + str(i) + str(i+1) for i in range(1,dim+1)]
-                bus_names = ['bus' + str(i) for i in range(1,dim+2)]
-
-                hw_names_rest = ['hw' + str(i) + str(i+1) for i in range(dim+1,8+1)]
-                bus_names_rest = ['bus' + str(i) for i in range(dim+2,8+2)]
-
-                cov_matrix = models[str(dim)]['cov_matrix']
-                mean = models[str(dim)]['mean']
-
-                #Get Mahalanobis distance squared from which a certain percentage of the data is out
-                m_th = math.sqrt(chi2.ppf(conf, df=dim))
-
-                #Inverse of cov matrix
-                if dim > 1:
-                    iv = np.linalg.inv(cov_matrix)
-
-                def calc_m_dist(row) :
-                    row_hws = row[hw_names]
-                    if dim > 1 :
-                        row['m_dist'] = mahalanobis(mean, row_hws, iv)
-                    else :
-                        std = cov_matrix
-                        hw_val = row_hws[hw_names[0]]
-                        row['m_dist'] = np.abs(mean - hw_val)/std
-
-                    if row['m_dist'] > m_th :
-                        row['anom'] = 1
-                    else :
-                        row['anom'] = 0
-
-                    return row
-
-                if window_data_points > 0 :
-                    #Set columns values
-                    window_df = window_df.apply(calc_m_dist,axis=1)
-                    window_df['line'] = line
-                    window_df['dim'] = dim
-
-                    #Set to 0 unused columns
-                    for name in hw_names_rest + bus_names_rest :
-                        window_df[name] = 0
-
-                    window_df = window_df[['line','datetime','dim','m_dist','anom'] + bus_names + bus_names_rest + hw_names + hw_names_rest]
-                    windows_dfs.append(window_df)
-
-                #Increase dim
-                dim += 1
-
-    #Concat them in a dataframe
-    headways_df = pd.concat(headways_dfs) if len(headways_dfs) > 0 else pd.DataFrame()
-    windows_df = pd.concat(windows_dfs) if len(windows_dfs) > 0 else pd.DataFrame()
-
-    #Check for anomalies
-    anomalies_df = pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom_size'] + bus_names_all + hw_names_all)
-    new_series,anomalies_dfs = [],[]
-    
-    if windows_df.shape[0] > 0 :
-        dims = windows_df.dim.unique().tolist()
-        for dim in dims :
-            dim_df = windows_df.loc[windows_df.dim == dim]
-
-            bus_names = ['bus' + str(i) for i in range(1,dim+2)]
-            unique_groups = []
-            for i in range(dim_df.shape[0]):
-                group = [dim_df.iloc[i][bus_names[k]] for k in range(dim+1)]
-                unique_groups.append(group)
-
-            for group in unique_groups :
-                #Build indexing condition
-                conds1 = [dim_df[bus_names[k]] == group[k] for k in range(dim+1)]
-                conds2 = [series_df[bus_names[k]] == group[k] for k in range(dim+1)]
-                final_cond1,final_cond2 = True,True
-
-                for i in range(len(conds1)) :
-                    final_cond1 &= conds1[i]
-                    final_cond2 &= conds2[i]
-
-                #Current group status
-                group_now = dim_df.loc[final_cond1].iloc[0]
-
-                #Past group status
-                group_df = series_df.loc[final_cond2]
-                if group_df.shape[0] > 0 :
-                    group_df = group_df.sort_values('datetime',ascending=False)
-                    last_size = group_df.iloc[0].anom_size
-
-                    if (group_now['anom'] == 0) and (last_size > 0) :
-                        group_now['anom_size'] = 0
-
-                        #We append the finished anomalies to the anomalies dfs
-                        group_df['anom_size'] = last_size
-                        anomalies_dfs.append(group_df.loc[group_df.anom == 1])
-
-                        #And we drop this rows from series_df
-                        series_df = series_df.loc[~final_cond2]
-                    else :
-                        group_now['anom_size'] = last_size + group_now['anom']
-                else :
-                    group_now['anom_size'] = group_now['anom']
-
-                new_series.append(group_now)
-
-        #Build current series dataframe and append it to the past series
-        new_series_df = pd.DataFrame(new_series)[['line','datetime','dim','m_dist','anom','anom_size'] + bus_names_all + hw_names_all]
-        series_df = series_df.append(new_series_df, ignore_index=True)
+    #Check for anomalies and update the time series
+    series_df,anomalies_dfs = build_series_anoms(series_df,windows_df)
 
     #Delete series from the list that havent appeared in the last 5 minutes
-    if series_df.shape[0] > 0 :
-        unique_groups = []
-        unique_groups_df = series_df.drop_duplicates(bus_names_all)
-        for i in range(unique_groups_df.shape[0]):
-            group = [unique_groups_df.iloc[i][bus_names_all[k]] for k in range(8+1)]
-            unique_groups.append(group)
+    series_df,anomalies_dfs = clean_series(series_df,anomalies_dfs,now)
 
-        for group in unique_groups :
-            #Build indexing conditions
-            conds = [series_df[bus_names_all[k]] == group[k] for k in range(8+1)]
-            final_cond = True
-            for cond in conds :
-                final_cond &= cond
-            group_df = series_df.loc[final_cond]
-
-            if group_df.shape[0] > 0 :
-                group_df = group_df.sort_values('datetime',ascending=False)
-                last_time = group_df.iloc[0].datetime
-                last_size = group_df.iloc[0].anom_size
-
-                seconds_ellapsed = (now - last_time).total_seconds()
-
-                if seconds_ellapsed > 600 :
-                    #Delete series from last series df
-                    series_df = series_df.loc[~final_cond]
-
-                    #If it was an anomaly
-                    if last_size > 0 :
-                        group_df['anom_size'] = last_size
-                        anomalies_dfs.append(group_df.loc[group_df.anom == 1])
-
-        #Build anomalies dataframe
-        anomalies_df = pd.concat(anomalies_dfs).drop('anom',axis=1) if len(anomalies_dfs) > 0 else pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom_size'] + bus_names_all + hw_names_all)
+    #Build anomalies dataframe
+    anomalies_df = pd.concat(anomalies_dfs).drop('anom',axis=1) if len(anomalies_dfs) > 0 else pd.DataFrame()
+    #Get anomalies with size over threshold
+    if anomalies_df.shape[0] > 0 :
+        anomalies_df = anomalies_df.loc[anomalies_df.anom_size >= size_th]
 
     return headways_df,series_df,anomalies_df
 
 
 def main():
-    #Confidence
-    conf = 0.95
-
-    #Headways series data
-    bus_names_all = ['bus' + str(i) for i in range(1,8+2)]
-    hw_names_all = ['hw' + str(i) + str(i+1) for i in range(1,8+1)]
+    #Read hyperparameters
+    try :
+        conf = float(argv[1])
+        size_th = int(argv[2])
+    except :
+        print('Arguments passed not valid, conf value should be between 0 and 1, and size_th should be a natural number\n')
+        exit(0)
 
     #Initialize dataframes
     series_df = pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom','anom_size'] + bus_names_all + hw_names_all)
-    last_burst_df = pd.DataFrame()
+    last_burst_df = pd.DataFrame(columns = ['line','destination','stop','bus','datetime','estimateArrive','DistanceBus'])
 
+    #Inform of the selected parameters
+    print('Detecting anomalies with the hyperparameters:')
+    print('Confidence threshold: conf = {}'.format(conf))
+    print('Anomaly size threshold: size_th = {}'.format(size_th))
+
+    #Look for updated data every 5 seconds
     while True :
-
         #Read last burst of data
-        burst = pd.read_csv('../../../flash/EMTBuses/buses_data_burst.csv',
+        burst_df = pd.read_csv('../../../flash/EMTBuses/buses_data_burst.csv',
             dtype={
                 'line': 'str',
                 'destination': 'str',
@@ -458,9 +481,10 @@ def main():
 
 
         #Parse the dates
-        burst['datetime'] = pd.to_datetime(burst['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
-        result = process_mh_dist(burst,last_burst_df,series_df,conf)
+        burst_df['datetime'] = pd.to_datetime(burst_df['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
+        result = detect_anomalies(burst_df,last_burst_df,series_df,conf,size_th)
 
+        #If the data was updated write files
         if result :
             headways_df,series_df,anomalies_df = result
 
@@ -478,7 +502,7 @@ def main():
             print('\nBurst headways and series were processed. Anomalies detected were added - {}'.format(dt.now()))
 
 
-        last_burst_df = burst
+        last_burst_df = burst_df
         time.sleep(5)
 
 if __name__== "__main__":

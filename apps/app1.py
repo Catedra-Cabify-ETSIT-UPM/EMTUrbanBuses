@@ -114,7 +114,7 @@ def find_nearest_row_by_dist(df,dist_traveled) :
         dist_traveled : float
     '''
     min_dist_error = 1000000.0
-    df_reduced = df.loc[(df.dist_traveled>dist_traveled-100)&(df.dist_traveled<dist_traveled+100)]
+    df_reduced = df.loc[(df.dist_traveled>dist_traveled-300)&(df.dist_traveled<dist_traveled+300)]
     if df_reduced.shape[0]!=0:
         for row in df_reduced.itertuples() :
             error = abs(row.dist_traveled-dist_traveled)
@@ -126,18 +126,18 @@ def find_nearest_row_by_dist(df,dist_traveled) :
     return nearest_row
 
 
-                    
+
 def build_map(line_df) :
     '''
     Returns a figure with the map of live location of buses
     '''
     if line_df.shape[0] < 1 :
         return 'EMPTY'
-    
+
     #Line and destinations
     line = line_df.iloc[0].line
     dest2,dest1 = lines_collected_dict[line]['destinations']
-    
+
     #Select line line shapes
     line1 = lines_shapes.loc[(lines_shapes.line_sn == line) & (lines_shapes.direction == 1)]
     line2 = lines_shapes.loc[(lines_shapes.line_sn == line) & (lines_shapes.direction == 2)]
@@ -149,7 +149,7 @@ def build_map(line_df) :
 
     #We create the figure object
     new_map = go.Figure()
-    
+
     #And set the figure layout
     new_map.update_layout(
         title='<b>BUSES POSITION</b>',
@@ -169,14 +169,14 @@ def build_map(line_df) :
             style=style
         )
     )
-    
+
     #Add the bus points to the figure
     for bus in line_df.itertuples() :
         if bus.destination == dest1 :
             lon,lat = calculate_coords(line1,bus.stop,bus.DistanceBus)
         else :
             lon,lat = calculate_coords(line2,bus.stop,bus.DistanceBus)
-            
+
         #Assign color based on bus id
         color = colors[bus.bus%len(colors)]
         #Bus marker
@@ -210,7 +210,7 @@ def build_map(line_df) :
         text=line_stops.id,
         hoverinfo='text'
     ))
-    
+
     #Add lines to the figure
     for line_shape in [line1,line2] :
         color = 'rgb(108, 173, 245)' if line_shape.iloc[0].direction == 1 else 'rgb(243, 109, 90)'
@@ -231,13 +231,13 @@ def build_graph(line_hws) :
     '''
     Returns a figure with the graph of headways between buses
     '''
-    
+
     #Process headways
     headways = line_hws
-    
+
     #Create figure object
     graph = go.Figure()
-    
+
     #Set title and layout
     graph.update_layout(
         title='<b>HEADWAYS</b>',
@@ -250,14 +250,14 @@ def build_graph(line_hws) :
         margin=dict(r=0, l=0, t=40, b=0),
         hovermode='closest'
     )
-    
+
     if headways.shape[0] < 1 :
         return graph
-    
+
     #Destinations
     line = headways.line.iloc[0]
     dest2,dest1 = lines_collected_dict[line]['destinations']
-    
+
     #Max dists
     hw1 = headways.loc[headways.direction == 1]
     hw2 = headways.loc[headways.direction == 2]
@@ -273,7 +273,7 @@ def build_graph(line_hws) :
             line=dict(width=1.5, color='rgb(108, 173, 245)'),
             showlegend=False
         ))
-        
+
     if hw2.shape[0] == 0 :
         max_dist2 = 0
     else :
@@ -291,12 +291,12 @@ def build_graph(line_hws) :
     for bus in headways.itertuples() :
         #Assign color based on bus id
         color = colors[bus.busB%len(colors)]
-        
+
         if bus.direction == 1 :
-            dest = dest1 
+            dest = dest1
         else :
             dest = dest2
-            
+
         #Add marker
         graph.add_trace(go.Scatter(
             mode='markers',
@@ -310,15 +310,15 @@ def build_graph(line_hws) :
             text=[str(bus.headway)+' seconds to next bus'],
             hoverinfo='text'
         ))
-        
+
     #Finally we return the graph
     return graph
 
 
 def build_m_dist_graph(series_df) :
-    
+
     graph = go.Figure()
-    
+
     #Set title and layout
     graph.update_layout(
         title='<b>MAHALANOBIS DISTANCE</b>',
@@ -334,25 +334,25 @@ def build_m_dist_graph(series_df) :
         margin=dict(r=0, l=0, t=40, b=0),
         hovermode='closest'
     )
-    
+
     if series_df.shape[0] < 1 :
         return graph
-    
+
     #All bus names
     bus_names_all = ['bus' + str(i) for i in range(1,8+2)]
     hw_names_all = ['hw' + str(i) + str(i+1) for i in range(1,8+1)]
-    
+
     #Min and max datetimes
     min_time = series_df.datetime.min()
     max_time = series_df.datetime.max()
-    
+
     #Locate unique groups
     unique_groups = []
     unique_groups_df = series_df.drop_duplicates(bus_names_all)
     for i in range(unique_groups_df.shape[0]):
         group = [unique_groups_df.iloc[i][bus_names_all[k]] for k in range(8+1)]
         unique_groups.append(group)
-    
+
     last_dim = 0
     for group in unique_groups :
         #Build indexing conditions
@@ -362,15 +362,15 @@ def build_m_dist_graph(series_df) :
             final_cond &= cond
         group_df = series_df.loc[final_cond]
         group_df = group_df.sort_values('datetime')
-        
+
         #Dimension
         dim = group_df.iloc[0].dim
         color = colors[dim]
-        
+
         #Dim threshold
         conf = 0.95
         m_th = math.sqrt(chi2.ppf(conf, df=dim))
-        
+
         if dim != last_dim :
             graph.add_shape(
                 name='{}Dim MD Threshold'.format(dim),
@@ -385,16 +385,16 @@ def build_m_dist_graph(series_df) :
                     dash='dashdot',
                 ),
             )
-        
+
         last_dim = dim
-        
+
         name = str(group[0])
         for bus in group[1:] :
             if bus != 0 :
-                name+='-'+str(bus) 
+                name+='-'+str(bus)
             else :
                 break
-        
+
         #Build group trace
         graph.add_trace(go.Scatter(
             name=name,
@@ -403,23 +403,23 @@ def build_m_dist_graph(series_df) :
             mode='lines+markers',
             line=dict(width=1.5, color=color)
         ))
-    
+
     return graph
-            
+
 
 
 def build_anoms_table(anomalies_df) :
-    
+
     #All bus names
     bus_names_all = ['bus' + str(i) for i in range(1,8+2)]
     hw_names_all = ['hw' + str(i) + str(i+1) for i in range(1,8+1)]
-    
+
     if anomalies_df.shape[0] < 1 :
         return 'No anomalies were detected yet.'
-    
+
     #Drop group duplicates
     anomalies_df = anomalies_df.sort_values('datetime',ascending=False).drop_duplicates(bus_names_all,keep='first')
-    
+
     #Build group names
     names = []
     for i in range(anomalies_df.shape[0]):
@@ -427,15 +427,15 @@ def build_anoms_table(anomalies_df) :
         name = str(group[0])
         for bus in group[1:] :
             if bus != 0 :
-                name+='-'+str(bus) 
+                name+='-'+str(bus)
             else :
                 break
-    
+
         names.append(name)
-        
+
     anomalies_df['group'] = names
     anomalies_df = anomalies_df[['dim','group','anom_size','datetime']]
-    
+
     table = dash_table.DataTable(
         id='table',
         filter_action='native',
@@ -455,7 +455,7 @@ def build_anoms_table(anomalies_df) :
         columns=[{"name": i, "id": i} for i in anomalies_df.columns],
         data=anomalies_df.to_dict('records')
     )
-    
+
     return table
 
 
@@ -493,7 +493,7 @@ def update_graph_live(n_intervals) :
     #Parse the dates
     burst['datetime'] = pd.to_datetime(burst['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
 
-        
+
     #Read last processed headways
     hws_burst = pd.read_csv('ProcessedData/headways_burst.csv',
         dtype={
@@ -505,22 +505,22 @@ def update_graph_live(n_intervals) :
             'busB_ttls':'uint16'
         }
     )[['line','direction','datetime','hw_pos','busA','busB','headway','busB_ttls']]
-    
+
     #Read last series data
     series_df = pd.read_csv('ProcessedData/series.csv',
         dtype={
             'line': 'str'
         }
     )
-    
+
     #Read last anomalies data
     anomalies_df = pd.read_csv('ProcessedData/anomalies.csv',
         dtype={
             'line': 'str'
         }
     )
-    
-    
+
+
     #Lines to iterate over
     lines = ['1','44','82','F','G','U','132','133','N2','N6']
     maps,graphs,m_dist_graphs,anoms_tables = [],[],[],[]
@@ -530,7 +530,7 @@ def update_graph_live(n_intervals) :
         line_hws = hws_burst.loc[hws_burst.line == line]
         line_series = series_df.loc[series_df.line == line]
         line_anoms = anomalies_df.loc[anomalies_df.line == line]
-        
+
         #Create map
         new_map = build_map(line_df)
         maps.append(new_map)
@@ -538,11 +538,11 @@ def update_graph_live(n_intervals) :
         #Create graph
         graph = build_graph(line_hws)
         graphs.append(graph)
-        
+
         #Create mh dist graph
         m_dist_graph = build_m_dist_graph(line_series)
         m_dist_graphs.append(m_dist_graph)
-        
+
         #Create anomalies table
         anoms_table = build_anoms_table(line_anoms)
         anoms_tables.append(anoms_table)
@@ -594,4 +594,3 @@ def update_graph_live(n_intervals) :
             'height':'5vh'
         })
     ]
-
