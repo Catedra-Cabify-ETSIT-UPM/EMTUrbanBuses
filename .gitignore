@@ -5,7 +5,6 @@ apps/.ipynb_checkpoints
 buses_data.csv
 buses_data_burst.csv
 Data/Raw/*
-Data/Anomalies/*
-Data/RealTime/*
 Data/Processed/*
 *.swp
+.cache
