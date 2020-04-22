@@ -11,10 +11,10 @@ import multiprocessing
 num_cores = multiprocessing.cpu_count()
 
 #Load line_stops_dict
-with open('../M6Data/lines_collected_dict.json', 'r') as f:
+with open('../../Data/Static/lines_collected_dict.json', 'r') as f:
     lines_collected_dict = json.load(f)
 #Load times between stops data
-times_bt_stops = pd.read_csv('../ProcessedData/times_bt_stops.csv',
+times_bt_stops = pd.read_csv('../../Data/Processed/times_bt_stops.csv',
     dtype={
         'line': 'str',
         'direction': 'uint16',
@@ -118,15 +118,15 @@ def process_day_df(line_df,date) :
                             else :
                                 buses_out2 += buses_near.bus.unique().tolist()
                     elif (stop == stops1[0]) or (stop == stops2[0]) :
-                        buses_near = stop_df.loc[stop_df.estimateArrive < 10]
+                        buses_near = stop_df.loc[stop_df.estimateArrive < 20]
                         if buses_near.shape[0] > 0 :
                             if direction == 1 :
                                 buses_out1 += buses_near.bus.unique().tolist()
                             else :
                                 buses_out2 += buses_near.bus.unique().tolist()
-                    else :
-                        stop_df.estimateArrive = stop_df.estimateArrive + mean_time_to_stop
-                        stop_df_list.append(stop_df)
+
+                    stop_df.estimateArrive = stop_df.estimateArrive + mean_time_to_stop
+                    stop_df_list.append(stop_df)
 
                 #Concatenate and group them
                 if len(stop_df_list)>0:
@@ -240,8 +240,8 @@ def main():
     # WE LOAD THE ARRIVAL TIMES DATA
     now = datetime.datetime.now()
     print('\n-------------------------------------------------------------------')
-    print('Reading the original data... - {}\n'.format(now))
-    buses_data = pd.read_csv('../ProcessedData/buses_data_pc.csv',
+    print('Reading the data cleaned with the arrival times included... - {}\n'.format(now))
+    buses_data = pd.read_csv('../../Data/Processed/buses_data_pc.csv',
         dtype={
             'line': 'str',
             'destination': 'str',
@@ -255,7 +255,7 @@ def main():
             'lat':'float32',
             'lon':'float32'
         }
-    )[['line','destination','stop','bus','datetime','estimateArrive']]
+    )[['line','destination','stop','bus','datetime','estimateArrive','DistanceBus']]
 
     #Parse the dates
     buses_data['datetime'] = pd.to_datetime(buses_data['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
@@ -275,7 +275,7 @@ def main():
     print('-------------------------------------------------------------------\n\n')
 
     #Processed data info
-    f = '../ProcessedData/headways.csv'
+    f = '../../Data/Processed/headways.csv'
     now = datetime.datetime.now()
     print('-------------------------------------------------------------------')
     print('Writting new data to {}... - {}'.format(f,now))

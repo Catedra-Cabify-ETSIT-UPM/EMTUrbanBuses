@@ -18,8 +18,8 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 # WE LOAD THE STOPS AND LINES
-lines_shapes = pd.read_csv('M6Data/lines_shapes.csv')
-with open('M6Data/line_stops_dict.json', 'r') as f:
+lines_shapes = pd.read_csv('Data/Static/lines_shapes.csv')
+with open('Data/Static/line_stops_dict.json', 'r') as f:
     line_stops_dict = json.load(f)
 
 class RepeatedTimer(object):
@@ -233,8 +233,10 @@ def get_arrival_data(requested_lines) :
                     #If the response isnt okey we pass to the next iteration
                     n_not_ok_answers = n_not_ok_answers + 1
                     continue
-
-                lapsed_time = int(re.search('lapsed: (.*) millsecs', arrival_data['description']).group(1))
+                try :
+                    lapsed_time = int(re.search('lapsed: (.*) millsecs', arrival_data['description']).group(1))
+                except : 
+                    lapsed_time = 0
                 date_time = datetime.datetime.strptime(arrival_data['datetime'], '%Y-%m-%dT%H:%M:%S.%f')
 
                 #We get the buses data
@@ -278,8 +280,8 @@ def get_arrival_data(requested_lines) :
         buses_df = pd.DataFrame(row_list, columns=keys)
 
         #And we append the data to the csv
-        f='buses_data.csv'
-        f_burst='buses_data_burst.csv'
+        f='Data/Raw/buses_data.csv'
+        f_burst='Data/RealTime/buses_data_burst.csv'
         if os.path.isfile(f) :
             buses_df.to_csv(f, mode='a', header=False)
         else :

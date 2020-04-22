@@ -145,7 +145,7 @@ def main():
     print('\n-------------------------------------------------------------------')
     print('Reading the headways data... - {}\n'.format(now))
     #Headways data
-    hws = pd.read_csv('../../../flash/EMTBuses/ProcessedData/headways.csv',
+    hws = pd.read_csv('../../Data/Processed/headways.csv',
         dtype={
             'line': 'str',
             'direction': 'uint16',
@@ -176,7 +176,7 @@ def main():
     print('-------------------------------------------------------------------\n\n')
 
     #Processed data info
-    f = '../../../flash/EMTBuses/ProcessedData/models_params.json'
+    f = '../../Data/Anomalies/models_params.json'
     now = dt.now()
     print('-------------------------------------------------------------------')
     print('Writting models parameters to {}... - {}'.format(f,now))

@@ -48,9 +48,6 @@ app.index_string = '''
             <div class="navbar-start">
               <a class="navbar-item" href="/">LINES AND STOPS MAP</a>
               <a class="navbar-item" href="/apps/app1">LIVE DATA</a>
-              <a class="navbar-item" href="/apps/app2">ARRIVAL TIMES</a>
-              <a class="navbar-item" href="/apps/app3">TIME BETWEEN STOPS</a>
-              <a class="navbar-item" href="/apps/app4">HEADWAYS</a>
               <a class="navbar-item" href="/credits">Credits</a>
             </div>
 

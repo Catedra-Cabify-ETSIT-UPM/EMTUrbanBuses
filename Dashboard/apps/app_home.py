@@ -13,9 +13,9 @@ import datetime
 from app import app
 
 # WE LOAD THE DATA
-stops = pd.read_csv('M6Data/stops.csv')
-lines_shapes = pd.read_csv('M6Data/lines_shapes.csv')
-with open('M6Data/line_stops_dict.json', 'r') as f:
+stops = pd.read_csv('../Data/Static/stops.csv')
+lines_shapes = pd.read_csv('../Data/Static/lines_shapes.csv')
+with open('../Data/Static/line_stops_dict.json', 'r') as f:
     line_stops_dict = json.load(f)
 
 layout = html.Div(className = '', children = [

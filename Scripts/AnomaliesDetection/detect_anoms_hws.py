@@ -20,13 +20,13 @@ from sys import argv
 
 
 #Lines collected dictionary
-with open('../M6Data/lines_collected_dict.json', 'r') as f:
+with open('../../Data/Static/lines_collected_dict.json', 'r') as f:
     lines_collected_dict = json.load(f)
 #Models parameters dictionary
-with open('../../../flash/EMTBuses/ProcessedData/models_params.json', 'r') as f:
+with open('../../Data/Anomalies/models_params.json', 'r') as f:
     models_params_dict = json.load(f)
 #Load times between stops data
-times_bt_stops = pd.read_csv('../../../flash/EMTBuses/ProcessedData/times_bt_stops.csv',
+times_bt_stops = pd.read_csv('../../Data/Processed/times_bt_stops.csv',
     dtype={
         'line': 'str',
         'direction': 'uint16',
@@ -55,6 +55,40 @@ day_type_dict = { #0 = Monday, 1 = Tuesday ...
 #Bus and headways column names
 bus_names_all = ['bus' + str(i) for i in range(1,8+2)]
 hw_names_all = ['hw' + str(i) + str(i+1) for i in range(1,8+1)]
+
+
+def clean_data(df) :
+    def check_conditions(row) :
+        #Direction
+        direction = '1' if row.destination == lines_collected_dict[row.line]['destinations'][1] else '2'
+
+        #Line destination stop coherence condition
+        line_dest_stop_cond = False
+        if row.line in lines_collected_dict.keys() :
+            if row.destination in lines_collected_dict[row.line]['destinations'] :
+                if str(row.stop) in lines_collected_dict[row.line][direction]['stops'] :
+                    line_dest_stop_cond = True
+
+        # DistanceBus values lower than the line length or negative
+        dist_cond = (row.DistanceBus >= 0) and \
+                    (row.DistanceBus < int(lines_collected_dict[row.line][direction]['length']))
+
+        # estimateArrive values lower than the time it takes to go through the line at an speed
+        # of 2m/s, instantaneous speed lower than 120 km/h and positive values and time remaining lower than 2 hours
+        eta_cond = (row.estimateArrive > 0) and \
+                   (row.estimateArrive < (int(lines_collected_dict[row.line][direction]['length'])/2)) and \
+                   ((3.6*row.DistanceBus/row.estimateArrive) < 120) & \
+                   (row.estimateArrive < 7200)
+
+        return line_dest_stop_cond and dist_cond and eta_cond
+
+    #Check conditions in df
+    mask = df.apply(check_conditions,axis=1)
+    #Select rows that match the conditions
+    df = df.loc[mask].reset_index(drop=True)
+    #Return cleaned DataFrame
+    return df
+
 
 #For every burst of data:
 def process_headways(int_df) :
@@ -112,16 +146,24 @@ def process_headways(int_df) :
                 buses_out1 += stop_df.bus.unique().tolist()
             else :
                 buses_out2 += stop_df.bus.unique().tolist()
-        if (stop == stops1[0]) or (stop == stops2[0]) :
-            buses_near = stop_df.loc[stop_df.estimateArrive < 5]
+        elif (stop == stops1[-2]) or (stop == stops2[-2]) :
+            stop_dist = int(lines_collected_dict[line][str(direction)]['distances'][stop])
+            buses_near = stop_df.loc[stop_df.DistanceBus > stop_dist/2]
             if buses_near.shape[0] > 0 :
                 if direction == 1 :
                     buses_out1 += buses_near.bus.unique().tolist()
                 else :
                     buses_out2 += buses_near.bus.unique().tolist()
-        else :
-            stop_df.estimateArrive = stop_df.estimateArrive + mean_time_to_stop
-            stop_df_list.append(stop_df)
+        elif (stop == stops1[0]) or (stop == stops2[0]) :
+            buses_near = stop_df.loc[stop_df.estimateArrive < 20]
+            if buses_near.shape[0] > 0 :
+                if direction == 1 :
+                    buses_out1 += buses_near.bus.unique().tolist()
+                else :
+                    buses_out2 += buses_near.bus.unique().tolist()
+
+        stop_df.estimateArrive = stop_df.estimateArrive + mean_time_to_stop
+        stop_df_list.append(stop_df)
 
     #Concatenate and group them
     stops_df = pd.concat(stop_df_list)
@@ -203,7 +245,10 @@ def get_ndim_hws (df,dim) :
     names = ['datetime'] + bus_names + hw_names
     for name in names:
         columns[name] = []
-
+    
+    if df.shape[0] < 1 :
+        return pd.DataFrame(columns=names)
+    
     #Unique datetime identifiers for the bursts
     burst_time = df.iloc[0].datetime
 
@@ -230,6 +275,7 @@ def get_ndim_hws (df,dim) :
 
 def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df,conf) :
     windows_dfs,headways_dfs = [],[]
+    
     #For every line
     for line in lines :
         #Process the headways
@@ -239,10 +285,13 @@ def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df,conf) :
         headways = process_headways(line_df)
         headways['line'] = line
         headways_dfs.append(headways)
-
+        
+        if headways.shape[0] < 1 :
+            continue
+            
         #Eliminate hw_pos == 0
         hws = headways.loc[headways.hw_pos > 0]
-
+        
         #Max dimensional model trained
         models = models_params_dict[line][day_type][hour_range]
         max_dim = models['max_dim']
@@ -272,11 +321,11 @@ def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df,conf) :
             def calc_m_dist(row) :
                 row_hws = row[hw_names]
                 if dim > 1 :
-                    row['m_dist'] = mahalanobis(mean, row_hws, iv)
+                    row['m_dist'] = round(mahalanobis(mean, row_hws, iv),5)
                 else :
                     std = cov_matrix
                     hw_val = row_hws[hw_names[0]]
-                    row['m_dist'] = np.abs(mean - hw_val)/std
+                    row['m_dist'] = round(np.abs(mean - hw_val)/std,5)
 
                 if row['m_dist'] > m_th :
                     row['anom'] = 1
@@ -349,7 +398,7 @@ def build_series_anoms(series_df,windows_df) :
                     #And we drop this rows from series_df
                     series_df = series_df.loc[~final_cond2]
                 else :
-                    group_now['anom_size'] = last_size + group_now['anom_size']
+                    group_now['anom_size'] = last_size + group_now['anom']
             else :
                 group_now['anom_size'] = group_now['anom']
 
@@ -434,7 +483,7 @@ def detect_anomalies(burst_df,last_burst_df,series_df,conf,size_th) :
     series_df,anomalies_dfs = clean_series(series_df,anomalies_dfs,now)
 
     #Build anomalies dataframe
-    anomalies_df = pd.concat(anomalies_dfs).drop('anom',axis=1) if len(anomalies_dfs) > 0 else pd.DataFrame()
+    anomalies_df = pd.concat(anomalies_dfs).drop('anom',axis=1) if len(anomalies_dfs) > 0 else pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom_size'] + bus_names_all + hw_names_all)
     #Get anomalies with size over threshold
     if anomalies_df.shape[0] > 0 :
         anomalies_df = anomalies_df.loc[anomalies_df.anom_size >= size_th]
@@ -463,7 +512,7 @@ def main():
     #Look for updated data every 5 seconds
     while True :
         #Read last burst of data
-        burst_df = pd.read_csv('../../../flash/EMTBuses/buses_data_burst.csv',
+        burst_df = pd.read_csv('../../Data/RealTime/buses_data_burst.csv',
             dtype={
                 'line': 'str',
                 'destination': 'str',
@@ -482,6 +531,10 @@ def main():
 
         #Parse the dates
         burst_df['datetime'] = pd.to_datetime(burst_df['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
+        
+        #Clean burst df
+        burst_df = clean_data(burst_df)
+        
         result = detect_anomalies(burst_df,last_burst_df,series_df,conf,size_th)
 
         #If the data was updated write files
@@ -489,15 +542,17 @@ def main():
             headways_df,series_df,anomalies_df = result
 
             #Write new data to files
-            f = '../ProcessedData/'
-            headways_df.to_csv(f+'headways_burst.csv')
+            f = '../../Data/'
+            burst_df.to_csv(f+'RealTime/buses_data_burst_c.csv')
+            
+            headways_df.to_csv(f+'RealTime/headways_burst.csv')
 
-            series_df.to_csv(f+'series.csv')
+            series_df.to_csv(f+'RealTime/series.csv')
 
-            if os.path.isfile(f+'anomalies.csv') :
-                anomalies_df.to_csv(f+'anomalies.csv', mode='a', header=False)
+            if os.path.isfile(f+'Anomalies/anomalies.csv') :
+                anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=False)
             else :
-                anomalies_df.to_csv(f+'anomalies.csv', mode='a', header=True)
+                anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=True)
 
             print('\nBurst headways and series were processed. Anomalies detected were added - {}'.format(dt.now()))
 

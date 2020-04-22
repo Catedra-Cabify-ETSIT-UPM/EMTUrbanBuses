@@ -4,5 +4,8 @@ api_credentials.py
 apps/.ipynb_checkpoints
 buses_data.csv
 buses_data_burst.csv
-ProcessedData/*
-.gitignore.swp
+Data/Raw/*
+Data/Anomalies/*
+Data/RealTime/*
+Data/Processed/*
+*.swp

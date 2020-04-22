@@ -46,26 +46,10 @@ zooms = {
 }
 
 # WE LOAD THE DATA
-stops = pd.read_csv('M6Data/stops.csv')
-lines_shapes = pd.read_csv('M6Data/lines_shapes.csv')
-with open('M6Data/lines_collected_dict.json', 'r') as f:
+stops = pd.read_csv('../Data/Static/stops.csv')
+lines_shapes = pd.read_csv('../Data/Static/lines_shapes.csv')
+with open('../Data/Static/lines_collected_dict.json', 'r') as f:
     lines_collected_dict = json.load(f)
-#Load times between stops data
-times_bt_stops = pd.read_csv('../../flash/EMTBuses/ProcessedData/times_bt_stops.csv',
-    dtype={
-        'line': 'str',
-        'direction': 'uint16',
-        'st_hour': 'uint16',
-        'end_hour': 'uint16',
-        'stopA': 'uint16',
-        'stopB': 'uint16',
-        'bus': 'uint16',
-        'trip_time':'float32',
-        'api_trip_time':'float32'
-    }
-)
-#Parse the dates
-times_bt_stops['date'] = pd.to_datetime(times_bt_stops['date'], format='%Y-%m-%d')
 
 
 layout = html.Div(className = '', children = [
@@ -145,7 +129,7 @@ def build_map(line_df) :
     center_y = line1.lat.mean()
 
     #We drop the duplicated buses keeping the instance that is closer to a stop
-    line_df = line_df.sort_values(by='DistanceBus').drop_duplicates('bus',keep='first')
+    line_df = line_df.sort_values(by='DistanceBus').drop_duplicates(['bus'],keep='first')
 
     #We create the figure object
     new_map = go.Figure()
@@ -475,7 +459,7 @@ def update_graph_live(n_intervals) :
             The line whose buses are going to be ploted
     '''
     #Read last burst of data
-    burst = pd.read_csv('../../flash/EMTBuses/buses_data_burst.csv',
+    burst = pd.read_csv('../Data/RealTime/buses_data_burst_c.csv',
         dtype={
             'line': 'str',
             'destination': 'str',
@@ -495,7 +479,7 @@ def update_graph_live(n_intervals) :
 
 
     #Read last processed headways
-    hws_burst = pd.read_csv('ProcessedData/headways_burst.csv',
+    hws_burst = pd.read_csv('../Data/RealTime/headways_burst.csv',
         dtype={
             'line': 'str',
             'direction': 'uint16',
@@ -507,14 +491,14 @@ def update_graph_live(n_intervals) :
     )[['line','direction','datetime','hw_pos','busA','busB','headway','busB_ttls']]
 
     #Read last series data
-    series_df = pd.read_csv('ProcessedData/series.csv',
+    series_df = pd.read_csv('../Data/RealTime/series.csv',
         dtype={
             'line': 'str'
         }
     )
 
     #Read last anomalies data
-    anomalies_df = pd.read_csv('ProcessedData/anomalies.csv',
+    anomalies_df = pd.read_csv('../Data/Anomalies/anomalies.csv',
         dtype={
             'line': 'str'
         }

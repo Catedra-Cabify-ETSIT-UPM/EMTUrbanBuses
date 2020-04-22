@@ -13,9 +13,9 @@ num_cores = multiprocessing.cpu_count()
 pandarallel.initialize()
 
 # WE LOAD THE STOPS AND LINES DATA
-lines_shapes = pd.read_csv('../M6Data/lines_shapes.csv')
+lines_shapes = pd.read_csv('../../Data/Static/lines_shapes.csv')
 #Load line_stops_dict
-with open('../M6Data/lines_collected_dict.json', 'r') as f:
+with open('../../Data/Static/lines_collected_dict.json', 'r') as f:
     lines_collected_dict = json.load(f)
 
 #FUNCTIONS
@@ -208,7 +208,7 @@ def clean_data(df,preprocess) :
 def main():
     #Read passed parameters
     preprocess,clean = False,False
-    f = '../ProcessedData/buses_data_'
+    f = '../../Data/Processed/buses_data_'
     if len(argv)>1:
         if ('p' in argv[1]) :
             preprocess = True
@@ -228,7 +228,7 @@ def main():
     now = datetime.datetime.now()
     print('\n-------------------------------------------------------------------')
     print('Reading the original data... - {}\n'.format(now))
-    buses_data = pd.read_csv('../buses_data.csv',
+    buses_data = pd.read_csv('../../Data/Raw/buses_data.csv',
         dtype={
             'line': 'str',
             'destination': 'str',
