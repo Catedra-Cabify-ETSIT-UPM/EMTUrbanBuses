@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd ">
+	<wpt lat="40.44707171994283" lon="-3.707847145234947">
+		<ele>712.7864325031437</ele>
+		<time>2020-03-09T10:57:11Z</time>
+		<name>1418</name>
+		<extensions>
+			<accuracy>14.0</accuracy>
+			<provider>gps</provider>
+		</extensions>
+	</wpt>
+	<wpt lat="40.44666101476202" lon="-3.710908011685828">
+		<ele>692.7440764207058</ele>
+		<time>2020-03-09T10:58:15Z</time>
+		<name>1416</name>
+		<extensions>
+			<accuracy>18.0</accuracy>
+			<provider>gps</provider>
+		</extensions>
+	</wpt>
+	<wpt lat="40.44640232251827" lon="-3.7139192373085717">
+		<ele>699.29576057631</ele>
+		<time>2020-03-09T10:59:33Z</time>
+		<name>2712</name>
+		<extensions>
+			<accuracy>19.0</accuracy>
+			<provider>gps</provider>
+		</extensions>
+	</wpt>
+	<wpt lat="40.44916468154292" lon="-3.7171951317475043">
+		<ele>669.5666039164734</ele>
+		<time>2020-03-09T11:01:36Z</time>
+		<name>3278</name>
+		<extensions>
+			<accuracy>4.0</accuracy>
+			<provider>gps</provider>
+		</extensions>
+	</wpt>
+	<wpt lat="40.44867901544052" lon="-3.7206704640776156">
+		<ele>657.6474855977174</ele>
+		<time>2020-03-09T11:02:29Z</time>
+		<name>5140</name>
+		<extensions>
+			<accuracy>4.0</accuracy>
+			<provider>gps</provider>
+		</extensions>
+	</wpt>
+	<wpt lat="40.44788880511345" lon="-3.72420879231141">
+		<ele>642.3118204549578</ele>
+		<time>2020-03-09T11:03:13Z</time>
+		<name>3292</name>
+		<extensions>
+			<accuracy>4.0</accuracy>
+			<provider>gps</provider>
+		</extensions>
+	</wpt>
+	<wpt lat="40.4485344442016" lon="-3.7257757549959156">
+		<ele>627.4871826343789</ele>
+		<time>2020-03-09T11:03:57Z</time>
+		<name>3274</name>
+		<extensions>
+			<accuracy>4.0</accuracy>
+			<provider>gps</provider>
+		</extensions>
+	</wpt>
+	<wpt lat="40.450032549795914" lon="-3.727532981608124">
+		<ele>636.8527758361952</ele>
+		<time>2020-03-09T11:04:57Z</time>
+		<name>1693</name>
+		<extensions>
+			<accuracy>4.0</accuracy>
+			<provider>gps</provider>
+		</extensions>
+	</wpt>
+	<wpt lat="40.45201166670896" lon="-3.7277144550235803">
+		<ele>636.014593011651</ele>
+		<time>2020-03-09T11:05:44Z</time>
+		<name>4285</name>
+		<extensions>
+			<accuracy>5.0</accuracy>
+			<provider>gps</provider>
+		</extensions>
+	</wpt>
+</gpx>

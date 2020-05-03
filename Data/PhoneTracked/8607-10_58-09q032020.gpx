@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?><gpx version="1.0" creator="GPSLogger 106 - http://gpslogger.mendhak.com/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://www.topografix.com/GPX/1/0" xsi:schemaLocation="http://www.topografix.com/GPX/1/0 http://www.topografix.com/GPX/1/0/gpx.xsd"><time>2020-03-09T09:57:58.000Z</time><trk><trkseg><trkpt lat="40.44677776784524" lon="-3.710541507984318"><ele>744.961840890348</ele><time>2020-03-09T09:57:58.000Z</time><course>243.95213</course><speed>6.8199024</speed><src>network</src></trkpt>
+<trkpt lat="40.446733384261414" lon="-3.7106781344159447"><ele>744.6844860380515</ele><time>2020-03-09T09:58:00.000Z</time><course>249.18266</course><speed>5.857605</speed><src>network</src></trkpt>
+<trkpt lat="40.44670083030654" lon="-3.710799112933124"><ele>743.892502903007</ele><time>2020-03-09T09:58:02.000Z</time><course>254.29584</course><speed>4.9757643</speed><src>network</src></trkpt>
+<trkpt lat="40.4466712114506" lon="-3.7108902772247068"><ele>744.1543654175475</ele><time>2020-03-09T09:58:04.000Z</time><course>256.1188</course><speed>2.3036838</speed><src>network</src></trkpt>
+<trkpt lat="40.44664729884058" lon="-3.710913512190139"><ele>745.015206980519</ele><time>2020-03-09T09:58:06.000Z</time><course>256.1188</course><speed>0.56541723</speed><src>network</src></trkpt>
+<trkpt lat="40.44665523573822" lon="-3.7109385657996885"><ele>745.2662776904181</ele><time>2020-03-09T09:58:08.000Z</time><course>256.1188</course><speed>0.51768076</speed><src>network</src></trkpt>
+<trkpt lat="40.446648099510746" lon="-3.7109256188373605"><ele>745.1860245279968</ele><time>2020-03-09T09:58:11.000Z</time><course>256.1188</course><speed>0.29973057</speed><src>network</src></trkpt>
+<trkpt lat="40.44664244014996" lon="-3.7109287431020825"><ele>745.1053290776908</ele><time>2020-03-09T09:58:13.000Z</time><course>256.1188</course><speed>0.30218953</speed><src>network</src></trkpt>
+<trkpt lat="40.44663255268687" lon="-3.710950547538286"><ele>745.118439569138</ele><time>2020-03-09T09:58:15.000Z</time><course>256.1188</course><speed>1.7930741</speed><src>network</src></trkpt>
+<trkpt lat="40.446628871331136" lon="-3.7110114516257906"><ele>743.8506072722375</ele><time>2020-03-09T09:58:17.000Z</time><course>256.1188</course><speed>3.3377123</speed><src>network</src></trkpt>
+<trkpt lat="40.4466298667082" lon="-3.7111446912706887"><ele>742.8955920403823</ele><time>2020-03-09T09:58:19.000Z</time><course>246.59576</course><speed>4.7998037</speed><src>network</src></trkpt>
+<trkpt lat="40.44660802955234" lon="-3.7112675982150614"><ele>742.2064318973571</ele><time>2020-03-09T09:58:21.000Z</time><course>249.99455</course><speed>5.1753926</speed><src>network</src></trkpt>
+<trkpt lat="40.44659226902699" lon="-3.7113934420127452"><ele>742.2216926217079</ele><time>2020-03-09T09:58:23.000Z</time><course>249.31932</course><speed>4.804818</speed><src>network</src></trkpt>
+<trkpt lat="40.44656036941478" lon="-3.7114994490712383"><ele>741.729203550145</ele><time>2020-03-09T09:58:25.000Z</time><course>240.64252</course><speed>4.3341646</speed><src>network</src></trkpt>
+<trkpt lat="40.446529373891515" lon="-3.711581420635266"><ele>741.0945752663538</ele><time>2020-03-09T09:58:27.000Z</time><course>254.88559</course><speed>3.2608066</speed><src>network</src></trkpt>
+<trkpt lat="40.44651030459854" lon="-3.7116374179125757"><ele>741.098821144551</ele><time>2020-03-09T09:58:29.000Z</time><course>248.92545</course><speed>2.7839415</speed><src>network</src></trkpt>
+<trkpt lat="40.446495663552966" lon="-3.7116908034815705"><ele>741.7414778647944</ele><time>2020-03-09T09:58:31.000Z</time><course>255.63773</course><speed>2.1484048</speed><src>network</src></trkpt>
+<trkpt lat="40.446494556198324" lon="-3.7117186201329773"><ele>742.7066815746948</ele><time>2020-03-09T09:58:33.000Z</time><course>255.63773</course><speed>0.7044277</speed><src>network</src></trkpt>
+<trkpt lat="40.44649596214369" lon="-3.7117167100890103"><ele>743.5943978875875</ele><time>2020-03-09T09:58:35.000Z</time><course>255.63773</course><speed>0.26337644</speed><src>network</src></trkpt>
+<trkpt lat="40.44649378102674" lon="-3.7117148042080332"><ele>744.3769839480519</ele><time>2020-03-09T09:58:37.000Z</time><course>255.63773</course><speed>0.0</speed><src>network</src></trkpt>
+<trkpt lat="40.44649378102674" lon="-3.7117148042080332"><ele>744.3769839480519</ele><time>2020-03-09T09:58:39.000Z</time><course>255.63773</course><speed>0.0</speed><src>network</src></trkpt>
+<trkpt lat="40.44649378102674" lon="-3.7117148042080332"><ele>744.3769839480519</ele><time>2020-03-09T09:58:41.000Z</time><course>255.63773</course><speed>0.0</speed><src>network</src></trkpt>
+<trkpt lat="40.44649378102674" lon="-3.7117148042080332"><ele>744.3769839480519</ele><time>2020-03-09T09:58:44.000Z</time><course>255.63773</course><speed>0.0</speed><src>gps</src><sat>22</sat></trkpt>
+<trkpt lat="40.44649378102674" lon="-3.7117148042080332"><ele>744.3769839480519</ele><time>2020-03-09T09:58:46.000Z</time><course>255.63773</course><speed>0.0</speed><src>gps</src><sat>22</sat></trkpt>
+<trkpt lat="40.44649378102674" lon="-3.7117148042080332"><ele>744.3769839480519</ele><time>2020-03-09T09:58:48.000Z</time><course>255.63773</course><speed>0.0</speed><src>network</src></trkpt>
+<trkpt lat="40.44649364787947" lon="-3.711729513237492"><ele>743.5185146406293</ele><time>2020-03-09T09:58:50.000Z</time><course>255.63773</course><speed>1.5705199</speed><src>network</src></trkpt>
+<trkpt lat="40.44647785488544" lon="-3.7117898755620478"><ele>743.3955967966467</ele><time>2020-03-09T09:58:52.000Z</time><course>255.63773</course><speed>3.6522648</speed><src>network</src></trkpt>
+<trkpt lat="40.446470511061214" lon="-3.7118780419581947"><ele>743.616528486833</ele><time>2020-03-09T09:58:54.000Z</time><course>256.47186</course><speed>4.094774</speed><src>network</src></trkpt>
+<trkpt lat="40.446446657184325" lon="-3.7119646387046132"><ele>743.934805973433</ele><time>2020-03-09T09:58:56.000Z</time><course>244.54697</course><speed>3.9898534</speed><src>network</src></trkpt>
+</trkseg></trk></gpx>
