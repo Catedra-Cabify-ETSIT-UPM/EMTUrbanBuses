@@ -55,7 +55,15 @@ with open('../Data/Static/lines_collected_dict.json', 'r') as f:
 layout = html.Div(className = '', children = [
 
     html.Div(className = '', children = [
-        html.Div(className='box',id='live-update-data'),
+        html.Div(className='box', children = [
+            html.Div(className='columns', children=[
+                html.Div(id='tab-title', className='column'),
+                html.Div(className='column is-narrow', style=dict(height='0.5vh'), children=[
+                    html.Button('Update',className='button', id='update-button')
+                ]),
+            ]),
+            html.Div(id='live-update-data')
+        ]),
         dcc.Interval(
             id='interval-component',
             interval=50*1000, # in milliseconds
@@ -137,7 +145,6 @@ def build_map(line_df) :
     #And set the figure layout
     new_map.update_layout(
         title='<b>BUSES POSITION</b>',
-        height=350,
         margin=dict(r=0, l=0, t=40, b=0),
         hovermode='closest',
         showlegend=False,
@@ -204,7 +211,7 @@ def build_map(line_df) :
             mode='lines',
             line=dict(width=1.5, color=color),
             text='Línea : {}-{}'.format(line,line_shape.iloc[0].direction),
-            hoverinfo='text'
+            hoverinfo='skip'
         ))
 
     #And finally we return the map
@@ -227,10 +234,14 @@ def build_graph(line_hws) :
         title='<b>HEADWAYS</b>',
         legend_title='<b>Bus ids</b>',
         xaxis = dict(
-            title_text = 'Seconds remaining to last stop of the line',
+            title_text = 'Seconds remaining to destination',
             nticks=20
         ),
-        height=350,
+        yaxis = dict(
+            type='category',
+            showgrid=False, 
+            zeroline=False
+        ),
         margin=dict(r=0, l=0, t=40, b=0),
         hovermode='closest'
     )
@@ -252,10 +263,11 @@ def build_graph(line_hws) :
         #Add trace
         graph.add_trace(go.Scatter(
             x=hw1.busB_ttls,
-            y=[('To: ' + dest1) for direction in hw1.direction.tolist()],
+            y=[('<b>'+dest1) for direction in hw1.direction.tolist()],
             mode='lines+markers',
             line=dict(width=1.5, color='rgb(108, 173, 245)'),
-            showlegend=False
+            showlegend=False,
+            hoverinfo='skip'
         ))
 
     if hw2.shape[0] == 0 :
@@ -265,10 +277,11 @@ def build_graph(line_hws) :
         #Add trace
         graph.add_trace(go.Scatter(
             x=hw2.busB_ttls,
-            y=[('To: ' + dest2) for direction in hw2.direction.tolist()],
+            y=[('<b>'+dest2) for direction in hw2.direction.tolist()],
             mode='lines+markers',
             line=dict(width=1.5, color='rgb(243, 109, 90)'),
-            showlegend=False
+            showlegend=False,
+            hoverinfo='skip'
         ))
 
     #Add buses to graph
@@ -286,12 +299,12 @@ def build_graph(line_hws) :
             mode='markers',
             name=bus.busB,
             x=[bus.busB_ttls],
-            y=['To: ' + dest],
+            y=['<b>'+dest],
             marker=dict(
                 size=20,
                 color=color
             ),
-            text=[str(bus.headway)+' seconds to next bus'],
+            text=['<b>Bus: ' + str(bus.busB) + '</b> <br>' + str(bus.headway)+'s to next bus <br>' + str(bus.busB_ttls) + 's to last stop'],
             hoverinfo='text'
         ))
 
@@ -314,7 +327,6 @@ def build_m_dist_graph(series_df) :
             title_text = 'Mahalanobis Distance',
             nticks=20
         ),
-        height=350,
         margin=dict(r=0, l=0, t=40, b=0),
         hovermode='closest'
     )
@@ -447,9 +459,18 @@ def build_anoms_table(anomalies_df) :
 # CALLBACKS
 
 # CALLBACK 1 - Live Graph of Line Buses
-@app.callback(Output(component_id = 'live-update-data',component_property = 'children'),
-              [Input(component_id = 'interval-component',component_property = 'n_intervals')])
-def update_graph_live(n_intervals) :
+@app.callback(
+    [
+        Output('tab-title','children'),
+        Output('live-update-data','children')
+    ],
+    [
+        Input('interval-component','n_intervals'),
+        Input('update-button','n_clicks'),
+        Input('url', 'pathname')
+    ]
+)
+def update_graph_live(n_intervals,n_clicks,pathname) :
     '''
     Function that reads buses_data_burst every x seconds and updates the graphs
 
@@ -458,6 +479,7 @@ def update_graph_live(n_intervals) :
         input_lineId_value: string
             The line whose buses are going to be ploted
     '''
+    line = pathname[10:]
     #Read last burst of data
     burst = pd.read_csv('../Data/RealTime/buses_data_burst_c.csv',
         dtype={
@@ -503,78 +525,69 @@ def update_graph_live(n_intervals) :
             'line': 'str'
         }
     )
+        
+    #Line dataframe
+    line_df = burst.loc[burst.line == line]
+    line_hws = hws_burst.loc[hws_burst.line == line]
+    line_series = series_df.loc[series_df.line == line]
+    line_anoms = anomalies_df.loc[anomalies_df.line == line]
 
+    if line_df.shape[0] < 1 :
+        return [
+            [html.H1('Line {} Real-Time Monitoring'.format(line),className='title is-4')],
+            [html.H1('No buses were found inside the line.',className ='title is-5')]
+        ]
+    
+    #Create map
+    new_map = build_map(line_df)
 
-    #Lines to iterate over
-    lines = ['1','44','82','F','G','U','132','133','N2','N6']
-    maps,graphs,m_dist_graphs,anoms_tables = [],[],[],[]
-    for line in lines :
-        #Line dataframe
-        line_df = burst.loc[burst.line == line]
-        line_hws = hws_burst.loc[hws_burst.line == line]
-        line_series = series_df.loc[series_df.line == line]
-        line_anoms = anomalies_df.loc[anomalies_df.line == line]
+    #Create graph
+    graph = build_graph(line_hws)
 
-        #Create map
-        new_map = build_map(line_df)
-        maps.append(new_map)
+    #Create mh dist graph
+    m_dist_graph = build_m_dist_graph(line_series)
 
-        #Create graph
-        graph = build_graph(line_hws)
-        graphs.append(graph)
-
-        #Create mh dist graph
-        m_dist_graph = build_m_dist_graph(line_series)
-        m_dist_graphs.append(m_dist_graph)
-
-        #Create anomalies table
-        anoms_table = build_anoms_table(line_anoms)
-        anoms_tables.append(anoms_table)
-
-    #Build tag objects
-    tabs = []
-    for i in range(len(lines)) :
-        if maps[i] == 'EMPTY' :
-            tab = dcc.Tab(label=lines[i],children = [
-                html.H2('NO BUSES WERE FOUND IN THE LINE',className = 'subtitle is-3')
-            ],style={'padding': '0','line-height': '5vh'},selected_style={'padding': '0','line-height': '5vh'})
-        else :
-            tab = dcc.Tab(label=lines[i],children = [
-                html.Div(className='columns',children=[
-                    html.Div(className='column is-half',children=[
-                        dcc.Graph(
-                            id = 'map-{}'.format(lines[i]),
-                            figure = maps[i]
-                        )
-                    ]),
-                    html.Div(className='column is-half',children=[
-                        dcc.Graph(
-                            id = 'graph-{}'.format(lines[i]),
-                            figure = graphs[i]
-                        )
-                    ])
-                ]),
-                html.Div(className='columns',children=[
-                    html.Div(className='column is-half',children=[
-                        dcc.Graph(
-                            id = 'graph-mdist-{}'.format(lines[i]),
-                            figure = m_dist_graphs[i]
-                        )
-                    ]),
-                    html.Div(className='column is-half',children=[
-                        html.Div([
-                            html.H2('Detected anomalies',className = 'subtitle is-5'),
-                            anoms_tables[i]
-                        ])
-                    ])
-                ])
-            ],style={'padding': '0','line-height': '5vh'},selected_style={'padding': '0','line-height': '5vh'})
-        tabs.append(tab)
+    #Create anomalies table
+    anoms_table = build_anoms_table(line_anoms)
 
     #And return all of them
     return [
-        dcc.Tabs(tabs,style={
-            'font-size': '150%',
-            'height':'5vh'
-        })
+        [html.H1('Line {} Real-Time Monitoring'.format(line),className='title is-4')],
+        [
+            html.Div(className='columns',children=[
+                html.Div(className='column is-3', children=[
+                    dcc.Graph(
+                        id = 'map-{}'.format(line),
+                        className = 'box',
+                        style=dict(height='40vh'),
+                        figure = new_map
+                    )
+                ]),
+                html.Div(className='column is-half', children=[
+                    dcc.Graph(
+                        id = 'graph-{}'.format(line),
+                        className = 'box',
+                        style=dict(height='40vh'),
+                        figure = graph
+                    )
+                ])
+            ]),
+            html.Div(className='columns',children=[
+                html.Div(className='column is-half', children=[
+                    dcc.Graph(
+                        id = 'graph-mdist-{}'.format(line),
+                        className = 'box',
+                        style=dict(height='40vh'),
+                        figure = m_dist_graph
+                    )
+                ]),
+                html.Div(className='column is-half', children=[
+                    html.Div(className = 'box', children = [
+                        html.H2('Detected anomalies',className = 'subtitle is-5'),
+                        anoms_table
+                    ])
+                ])
+            ])
+        ]
     ]
+    

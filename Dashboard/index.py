@@ -35,7 +35,7 @@ app.index_string = '''
         <nav class="navbar navlogo" role="navigation" aria-label="main navigation">
 
           <div class="navbar-brand">
-            <a class="navbar-item logo1" href="/">EMT URBAN BUSES</a>
+            <a class="navbar-item logo1" href="/home">EMT URBAN BUSES</a>
             <div class="navbar-burger burger" data-target="navMenu">
               <span></span>
               <span></span>
@@ -46,8 +46,25 @@ app.index_string = '''
           <div id="navMenu" class="navbar-menu">
 
             <div class="navbar-start">
-              <a class="navbar-item" href="/">LINES AND STOPS MAP</a>
-              <a class="navbar-item" href="/apps/app1">LIVE DATA</a>
+              <a class="navbar-item" href="/home">LINES AND STOPS</a>
+              
+              <div class="navbar-item has-dropdown is-hoverable">
+                <a class="navbar-link">REAL TIME</a>
+
+                <div class="navbar-dropdown">
+                <a class="navbar-item" href="/realtime/1">Line 1</a>
+                <a class="navbar-item" href="/realtime/44">Line 44</a>
+                <a class="navbar-item" href="/realtime/82">Line 82</a>
+                <a class="navbar-item" href="/realtime/F">Line F</a>
+                <a class="navbar-item" href="/realtime/G">Line G</a>
+                <a class="navbar-item" href="/realtime/U">Line U</a>
+                <a class="navbar-item" href="/realtime/132">Line 132</a>
+                <a class="navbar-item" href="/realtime/133">Line 133</a>
+                <a class="navbar-item" href="/realtime/N5">Line N2</a>
+                <a class="navbar-item" href="/realtime/N6">Line N6</a>
+
+                </div>
+            </div>
               <a class="navbar-item" href="/credits">Credits</a>
             </div>
 
@@ -108,9 +125,9 @@ app.layout = html.Div([
 @app.callback(Output('page-content', 'children'),
               [Input('url', 'pathname')])
 def display_page(pathname):
-    if pathname == '/':
+    if (pathname == '/home') or (pathname == '/'):
          return app_home.layout
-    elif pathname == '/apps/app1':
+    elif pathname[0:9] == '/realtime':
          return app1.layout
     else:
         return app_credits.layout

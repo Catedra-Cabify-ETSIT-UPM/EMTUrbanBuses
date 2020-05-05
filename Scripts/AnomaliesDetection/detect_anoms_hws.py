@@ -472,6 +472,9 @@ def detect_anomalies(burst_df,last_burst_df,series_df,conf,size_th) :
         if (now.hour >= h_range[0]) and (now.hour < h_range[1]) :
             hour_range = str(h_range[0]) + '-' + str(h_range[1])
             break
+        elif (h_range == hour_ranges[-1]) :
+            print('\nHour range for {}:{} not defined. Waiting till 7am.\n'.format(now.hour,now.minute))
+            return 'Wait'
 
     #Process headways and build dimensional dataframes
     headways_df,windows_df = process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df,conf)
@@ -511,54 +514,67 @@ def main():
 
     #Look for updated data every 5 seconds
     while True :
-        #Read last burst of data
-        burst_df = pd.read_csv('../../Data/RealTime/buses_data_burst.csv',
-            dtype={
-                'line': 'str',
-                'destination': 'str',
-                'stop': 'uint16',
-                'bus': 'uint16',
-                'given_coords': 'bool',
-                'pos_in_burst':'uint16',
-                'estimateArrive': 'int32',
-                'DistanceBus': 'int32',
-                'request_time': 'int32',
-                'lat':'float32',
-                'lon':'float32'
-            }
-        )[['line','destination','stop','bus','datetime','estimateArrive','DistanceBus']]
+        try :
+            #Read last burst of data
+            burst_df = pd.read_csv('../../Data/RealTime/buses_data_burst.csv',
+                dtype={
+                    'line': 'str',
+                    'destination': 'str',
+                    'stop': 'uint16',
+                    'bus': 'uint16',
+                    'given_coords': 'bool',
+                    'pos_in_burst':'uint16',
+                    'estimateArrive': 'int32',
+                    'DistanceBus': 'int32',
+                    'request_time': 'int32',
+                    'lat':'float32',
+                    'lon':'float32'
+                }
+            )[['line','destination','stop','bus','datetime','estimateArrive','DistanceBus']]
 
 
-        #Parse the dates
-        burst_df['datetime'] = pd.to_datetime(burst_df['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
+            #Parse the dates
+            burst_df['datetime'] = pd.to_datetime(burst_df['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
+            
+            #Clean burst df
+            burst_df = clean_data(burst_df)
+            
+            result = detect_anomalies(burst_df,last_burst_df,series_df,conf,size_th)
+        except :
+            time.sleep(5)
+            continue
         
-        #Clean burst df
-        burst_df = clean_data(burst_df)
-        
-        result = detect_anomalies(burst_df,last_burst_df,series_df,conf,size_th)
-
         #If the data was updated write files
         if result :
-            headways_df,series_df,anomalies_df = result
+            if len(result) == 3 :
+                headways_df,series_df,anomalies_df = result
 
-            #Write new data to files
-            f = '../../Data/'
-            burst_df.to_csv(f+'RealTime/buses_data_burst_c.csv')
-            
-            headways_df.to_csv(f+'RealTime/headways_burst.csv')
+                #print(headways_df.head(2))
+                #print(series_df.head(2))
+                #print(anomalies_df.head(2))
 
-            series_df.to_csv(f+'RealTime/series.csv')
+                #Write new data to files
+                f = '../../Data/'
+                burst_df.to_csv(f+'RealTime/buses_data_burst_c.csv')
+                
+                headways_df.to_csv(f+'RealTime/headways_burst.csv')
 
-            if os.path.isfile(f+'Anomalies/anomalies.csv') :
-                anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=False)
-            else :
-                anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=True)
+                series_df.to_csv(f+'RealTime/series.csv')
 
-            print('\nBurst headways and series were processed. Anomalies detected were added - {}'.format(dt.now()))
+                if os.path.isfile(f+'Anomalies/anomalies.csv') :
+                    anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=False)
+                else :
+                    anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=True)
 
+                print('\nBurst headways and series were processed. Anomalies detected were added - {}'.format(dt.now()))
+                
+                time.sleep(5)
+
+        
+            elif result == 'Wait' :
+                time.sleep(600)
 
         last_burst_df = burst_df
-        time.sleep(5)
 
 if __name__== "__main__":
     main()
