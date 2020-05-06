@@ -21,6 +21,7 @@ from app import app
 
 # WE LOAD THE DATA
 stops = pd.read_csv('../Data/Static/stops.csv')
+
 stops_net = nx.read_gpickle("../Data/Static/StopsNetworks/stops_net_graph")
 stops_day_net = nx.read_gpickle("../Data/Static/StopsNetworks/stops_day_net_graph")
 stops_night_net = nx.read_gpickle("../Data/Static/StopsNetworks/stops_night_net_graph")
@@ -109,8 +110,7 @@ layout = html.Div(className = '', children = [
 
 #Token and styles for the mapbox api
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
-style_day = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
-style_night = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
+style_day = 'mapbox://styles/alejp1998/ck9voa0bb002y1ipcx8j00oeu'
 pio.templates.default = 'plotly_white'
 
 
@@ -130,7 +130,7 @@ def gen_bar_graph(top_stops,selected_param,axis_type) :
         ))
 
     bar_graph.update_layout(
-        title='Stops ranking',
+        title='<b>STOPS RANKING',
         margin=dict(r=0, l=0, t=30, b=0),
         showlegend=False,
         xaxis=dict(
@@ -213,11 +213,28 @@ def build_net_graph(lineIds):
         for i in range(len(ld_stops)) :
             stop = int(ld_stops[i])
             if i > 0 :
-                link_lines = intersect(G1.nodes[int(ld_stops[i-1])]['lines'], G1.nodes[stop]['lines'])
-                G1.add_edge(int(ld_stops[i-1]), stop, weight=len(link_lines), lines=link_lines)
+                stop_bef = int(ld_stops[i-1])
+                link_lines = intersect(G1.nodes[stop_bef]['lines'], G1.nodes[stop]['lines'])
+                
+                link_lines_good = []
+                for line in link_lines :
+                    line_stops = line_stops_dict[str(line)]['1'] + line_stops_dict[str(line)]['2'][1:]
+                    if issubset([str(stop_bef),str(stop)],line_stops):
+                        link_lines_good.append(line)
+
+                G1.add_edge(stop_bef, stop, weight=len(link_lines_good), lines=link_lines_good)
+
             if i < len(ld_stops)-1 :
-                link_lines = intersect(G1.nodes[int(ld_stops[i+1])]['lines'], G1.nodes[stop]['lines'])
-                G1.add_edge(stop, int(ld_stops[i+1]), weight=len(link_lines), lines=link_lines)
+                stop_aft = int(ld_stops[i+1])
+                link_lines = intersect(G1.nodes[stop_aft]['lines'], G1.nodes[stop]['lines'])
+                
+                link_lines_good = []
+                for line in link_lines :
+                    line_stops = line_stops_dict[str(line)]['1'] + line_stops_dict[str(line)]['2'][1:]
+                    if issubset([str(stop),str(stop_aft)],line_stops):
+                        link_lines_good.append(line)
+
+                G1.add_edge(stop, stop_aft, weight=len(link_lines_good), lines=link_lines_good)
 
     return G1
 
@@ -293,7 +310,7 @@ def gen_graph(G):
         hoverinfo='text'
     )
     layout = go.Layout(
-        title="<b>Stops network graph",
+        title="<b>STOPS NETWORK GRAPH",
         showlegend=False,
         margin=dict(r=0, l=0, t=30, b=0),
         xaxis = {
@@ -327,6 +344,11 @@ def get_subnet_nodes (subnet_lines) :
 def intersect(lst1, lst2): 
     return list(set(lst1) & set(lst2))
 
+def issubset(lst1,lst2):
+    for i in range(len(lst2)-len(lst1)) :
+        if lst1 == lst2[i:i+len(lst1)] :
+            return True
+    return False
 
 # CALLBACKS
 
@@ -334,14 +356,6 @@ def intersect(lst1, lst2):
 @app.callback(Output(component_id = 'lines-graph',component_property = 'children'),
               [Input(component_id = 'lineIds-select',component_property = 'value')])
 def update_lines_graph(lineIds):
-    '''
-    Function that returns a graph with the lines requested and its stops
-
-        Parameters
-        ---
-        input_lineIds_value: string
-            The lines whose stops and trayetories we are going to plot
-    '''
     try :
         if type(lineIds) is str:
             lineIds = [lineIds]
@@ -426,7 +440,7 @@ def update_lines_graph(lineIds):
 
         #And set the figure layout
         fig.update_layout(
-            title='<b>Lines on the map',
+            title='<b>LINES AND STOPS ON THE MAP',
             margin=dict(r=0, l=0, t=30, b=0),
             hovermode='closest',
             showlegend=False,
@@ -466,39 +480,33 @@ def update_lines_graph(lineIds):
 @app.callback(Output(component_id = 'stops-net-graph',component_property = 'children'),
               [Input(component_id = 'lineIds-select',component_property = 'value')])
 def update_lines_graph(lineIds):
-    '''
-    Function that returns a net graph with the stops of the lines requested
-
-        Parameters
-        ---
-        input_lineIds_value: string
-            The lines whose stops and trayetories we are going to plot
-    '''
     try :
         if type(lineIds) is str:
             lineIds = [lineIds]
         
         #Nodes for the graph
         if 'All' in lineIds :
-            G = stops_net
+            net_graph = html.Iframe(src='../assets/stops_net_graph.html',style=dict(height='60vh',width='100%'))
         elif 'Day-time' in lineIds :
-            G = stops_day_net
+            net_graph = html.Iframe(src='../assets/stops_day_net_graph.html',style=dict(height='60vh',width='100%'))
         elif 'Night-time' in lineIds :
-            G = stops_night_net
+            net_graph = html.Iframe(src='../assets/stops_night_net_graph.html',style=dict(height='60vh',width='100%'))
+
         else:
             if 'Selected' :
                 lineIds = ['1','44','82','91','92','99','132','133','502','506']
             G = build_net_graph(lineIds)
-            
-        #Gen graph
-        net_graph = gen_graph(G)
-
-        return [
-            dcc.Graph(
+    
+            #Gen graph
+            net_graph = gen_graph(G)
+            net_graph = dcc.Graph(
                 id = 'net-graph',
                 style=dict(height='60vh'),
                 figure = net_graph
             )
+
+        return [
+            net_graph
         ]
     except: 
         #If there is an error we ask for a valid line id
@@ -510,15 +518,7 @@ def update_lines_graph(lineIds):
               [Input(component_id = 'lineIds-select',component_property = 'value'),
               Input(component_id = 'param-selector',component_property = 'value'),
               Input(component_id = 'axis-type',component_property = 'value')])
-def update_lines_graph(lineIds,selected_param,axis_type):
-    '''
-    Function that returns a net graph with the stops of the lines requested
-
-        Parameters
-        ---
-        input_lineIds_value: string
-            The lines whose stops and trayetories we are going to plot
-    '''
+def update_ranked_stops(lineIds,selected_param,axis_type):
     try :
         if type(lineIds) is str:
             lineIds = [lineIds]

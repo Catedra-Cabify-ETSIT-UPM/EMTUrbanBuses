@@ -40,19 +40,6 @@ colors2 = [
     "#d5eae7", "#f3e1eb", "#f6c4e1", "#f79cd4"
 ]
 
-zooms = {
-    '1': 12.3,
-    '44': 11.8,
-    '82': 11.8,
-    'F': 13,
-    'G': 13,
-    'U': 13,
-    '132': 11.5,
-    '133': 11.5,
-    'N2': 11.5,
-    'N6': 11.5,
-}
-
 # WE LOAD THE DATA
 stops = pd.read_csv('../Data/Static/stops.csv')
 lines_shapes = pd.read_csv('../Data/Static/lines_shapes.csv')
@@ -61,40 +48,57 @@ with open('../Data/Static/lines_collected_dict.json', 'r') as f:
 
 
 layout = html.Div(className = '', children = [
-
-    html.Div(className = '', children = [
-        html.Div(className='box', children = [
-            html.Div(className='columns', children=[
-                html.Div(id='tab-title', className='column'),
-                html.Div(id='conf',className='column', style=dict(height='7.5vh')),
-                html.Div(id='size-th',className='column', style=dict(height='7.5vh')),
-                html.Div(className='column is-narrow', style=dict(height='0.5vh'), children=[
-                    html.Button('Force Update',className='button', id='update-button')
-                ])
-            ]),
-            html.Div(className='columns',children=[
-                html.Div(id='buses-pos', className='column is-3'),
-                html.Div(id='flat-hws', className='column is-5'),
-                html.Div(id='time-series-hws', className='column is-4'),
-            ]),
-            html.Div(className='columns',children=[
-                html.Div(id='mdist-hws', className='column is-half'),
-                html.Div(id='anom-hws',className='column is-half')
+    html.Div(className='box', children = [
+        html.Div(className='columns', children=[
+            html.Div(id='tab-title', className='column'),
+            html.Div(id='conf',className='column', style=dict(height='7vh')),
+            html.Div(id='size-th',className='column', style=dict(height='7vh')),
+            html.Div(className='column is-narrow', style=dict(height='0.5vh'), children=[
+                html.Button('Force Update',className='button', id='update-button')
             ])
         ]),
-        html.Div(id='invisible', children = ['']),
-        dcc.Interval(
-            id='interval-component',
-            interval=50*1000, # in milliseconds
-            n_intervals=0
-        )
-    ])
-
+        html.Div(className='columns',children=[
+            html.Div(id='buses-pos-div', className='column is-3',children=[
+                dcc.Graph(
+                    id = 'map',
+                    className = 'box',
+                    style=dict(height='39vh'),
+                    figure = go.Figure()
+                )
+            ]),
+            html.Div(id='flat-hws-div', className='column is-5',children=[
+                dcc.Graph(
+                    id = 'flat-hws',
+                    className = 'box',
+                    style=dict(height='39vh'),
+                    figure = go.Figure()
+                )
+            ]),
+            html.Div(id='time-series-hws-div', className='column is-4',children=[
+                dcc.Graph(
+                    id = 'time-series-hws',
+                    className = 'box',
+                    style=dict(height='39vh'),
+                    figure = go.Figure()
+                )
+            ]),
+        ]),
+        html.Div(className='columns',children=[
+            html.Div(id='mdist-hws-div', className='column is-half'),
+            html.Div(id='anom-hws-div',className='column is-half')
+        ])
+    ]),
+    html.Div(id='hidden-div', style={'display':'none'}),
+    dcc.Interval(
+        id='interval-component',
+        interval=30*1000, # in milliseconds
+        n_intervals=0
+    )
 ])
 
 #MAPBOX API TOKEN AND STYLES
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
-style = 'mapbox://styles/alejp1998/ck6z9mohb25ni1iod4sqvqa0d'
+style = 'mapbox://styles/alejp1998/ck9voa0bb002y1ipcx8j00oeu'
 pio.templates.default = 'plotly_white'
 
 
@@ -150,32 +154,16 @@ def read_df(name) :
 
 
 def calculate_coords(df,stop_id,dist_to_stop) :
-    '''
-    Returns the calculated coordinates of the bus
-    Parameters
-        ----------
-        df : dataframe
-            Dataframe where we want to find the calculated coords
-        stop : str
-        dist_traveled : float
-    '''
     line_sn = df.iloc[0].line_sn
     direction = str(df.iloc[0].direction)
     bus_distance = int(lines_collected_dict[line_sn][direction]['distances'][str(stop_id)]) - dist_to_stop
     nearest_row = find_nearest_row_by_dist(df,bus_distance)
     return nearest_row.lon, nearest_row.lat
 
+
 def find_nearest_row_by_dist(df,dist_traveled) :
-    '''
-    Returns the row nearest to the distance traveled passed in the dataframe
-        Parameters
-        ----------
-        df : dataframe
-            Dataframe where we want to find the row
-        dist_traveled : float
-    '''
     min_dist_error = 1000000.0
-    df_reduced = df.loc[(df.dist_traveled>dist_traveled-300)&(df.dist_traveled<dist_traveled+300)]
+    df_reduced = df.loc[(df.dist_traveled>dist_traveled-500)&(df.dist_traveled<dist_traveled+500)]
     if df_reduced.shape[0]!=0:
         for row in df_reduced.itertuples() :
             error = abs(row.dist_traveled-dist_traveled)
@@ -186,6 +174,34 @@ def find_nearest_row_by_dist(df,dist_traveled) :
         nearest_row = df.iloc[0]
     return nearest_row
 
+
+def calc_map_params(df) :
+    #Select line line shapes
+    line = df.line.iloc[0]
+    line1 = lines_shapes.loc[(lines_shapes.line_sn == line) & (lines_shapes.direction == 1)]
+    line2 = lines_shapes.loc[(lines_shapes.line_sn == line) & (lines_shapes.direction == 2)]
+    dest1 = lines_collected_dict[line]['destinations'][1]
+
+    lons,lats = [],[]
+    for bus in df.itertuples() :
+        if bus.destination == dest1 :
+            lon,lat = calculate_coords(line1,bus.stop,bus.DistanceBus)
+        else :
+            lon,lat = calculate_coords(line2,bus.stop,bus.DistanceBus)
+
+        lons.append(lon)
+        lats.append(lat)
+    
+    df['lon'] = lons
+    df['lat'] = lats 
+    center_x = df.lon.mean()
+    center_y = df.lat.mean()
+
+    if df.shape[0] > 1 :
+        zoom = min(max(3*math.log(1/(min(math.sqrt((max(lons)-min(lons))**2 + (max(lats)-min(lats))**2),1))),11.5),13.5)
+    else :
+        zoom = 14
+    return df,center_x,center_y,zoom
 
 
 def build_map(line_df) :
@@ -202,11 +218,11 @@ def build_map(line_df) :
     #Select line line shapes
     line1 = lines_shapes.loc[(lines_shapes.line_sn == line) & (lines_shapes.direction == 1)]
     line2 = lines_shapes.loc[(lines_shapes.line_sn == line) & (lines_shapes.direction == 2)]
-    center_x = line1.lon.mean()
-    center_y = line1.lat.mean()
 
     #We drop the duplicated buses keeping the instance that is closer to a stop
     line_df = line_df.sort_values(by='DistanceBus').drop_duplicates(['bus'],keep='first')
+    
+    line_df,center_x,center_y,zoom = calc_map_params(line_df)
 
     #We create the figure object
     new_map = go.Figure()
@@ -225,24 +241,19 @@ def build_map(line_df) :
                 lon=center_x
             ),
             pitch=0,
-            zoom=zooms[line],
+            zoom=zoom,
             style=style
         )
     )
 
     #Add the bus points to the figure
     for bus in line_df.itertuples() :
-        if bus.destination == dest1 :
-            lon,lat = calculate_coords(line1,bus.stop,bus.DistanceBus)
-        else :
-            lon,lat = calculate_coords(line2,bus.stop,bus.DistanceBus)
-
         #Assign color based on bus id
         color = colors[bus.bus%len(colors)]
         #Bus marker
         new_map.add_trace(go.Scattermapbox(
-            lat=[lat],
-            lon=[lon],
+            lat=[bus.lat],
+            lon=[bus.lon],
             mode='markers',
             marker=go.scattermapbox.Marker(
                 size=20,
@@ -254,7 +265,16 @@ def build_map(line_df) :
         ))
 
     #Select line stops
-    stop_names = lines_collected_dict[line]['1']['stops'][1:] + lines_collected_dict[line]['2']['stops'][1:]
+    if line_df[line_df.destination == dest1].shape[0] < 1 :
+        stop_names = lines_collected_dict[line]['2']['stops'][1:]
+        lines_hovered = [line2]
+    elif line_df[line_df.destination == dest2].shape[0] < 1 :
+        stop_names = lines_collected_dict[line]['1']['stops'][1:]
+        lines_hovered = [line1]
+    else :
+        stop_names = lines_collected_dict[line]['1']['stops'][1:] + lines_collected_dict[line]['2']['stops'][1:]
+        lines_hovered = [line1,line2]
+
     line_stops = stops.loc[stops.id.isin(stop_names)]
 
     #Add the stops to the figure
@@ -272,7 +292,7 @@ def build_map(line_df) :
     ))
 
     #Add lines to the figure
-    for line_shape in [line1,line2] :
+    for line_shape in lines_hovered :
         color = 'rgb(108, 173, 245)' if line_shape.iloc[0].direction == 1 else 'rgb(243, 109, 90)'
         new_map.add_trace(go.Scattermapbox(
             lat=line_shape.lat,
@@ -300,7 +320,7 @@ def build_graph(line_hws) :
 
     #Set title and layout
     graph.update_layout(
-        title='<b>HEADWAYS</b>',
+        title='<b>HEADWAYS</b> - (Hover buses or link to see more)',
         legend_title='<b>Bus ids</b>',
         xaxis = dict(
             title_text = 'Seconds remaining to destination',
@@ -338,10 +358,13 @@ def build_graph(line_hws) :
             
             graph.add_trace(go.Scatter(
                 x=X_new,
-                y=[('<b>'+dest1) for i in range(N+3)],
+                y=[('<b>'+dest1) for i in range(len(X_new))],
                 mode='lines',
                 line=dict(width=1.5, color=colors2[(hw1.iloc[i+1].busA+hw1.iloc[i+1].busB)%len(colors2)]),
                 showlegend=False,
+                hoverinfo='text',
+                text='<b>Bus group: ' + str(hw1.iloc[i+1].busA) + '-' + str(hw1.iloc[i+1].busB) + '</b> <br>' + \
+                    'Headway: ' + str(hw1.iloc[i+1].headway)+'s'
             ))
 
     if hw2.shape[0] == 0 :
@@ -357,10 +380,13 @@ def build_graph(line_hws) :
             
             graph.add_trace(go.Scatter(
                 x=X_new,
-                y=[('<b>'+dest2) for i in range(N+3)],
+                y=[('<b>'+dest2) for i in range(len(X_new))],
                 mode='lines',
                 line=dict(width=1.5, color=colors2[(hw2.iloc[i+1].busA+hw2.iloc[i+1].busB)%len(colors2)]),
                 showlegend=False,
+                hoverinfo='text',
+                text='<b>Bus group: ' + str(hw2.iloc[i+1].busA) + '-' + str(hw2.iloc[i+1].busB) + '</b> <br>' + \
+                    'Headway: ' + str(hw2.iloc[i+1].headway)+'s'
             ))
 
     #Add buses to graph
@@ -438,7 +464,7 @@ def build_time_series_graph(series_df) :
             final_cond &= cond
         group_df = series_df.loc[final_cond]
         group_df = group_df.sort_values('datetime')
-
+        
         name = str(group[0])
         for bus in group[1:] :
             if bus != 0 :
@@ -626,7 +652,7 @@ def update_title_sliders(n_intervals,pathname) :
 
     #And return all of them
     return [
-        [html.H1('Line {} Real-Time Monitoring'.format(line),className='title is-4')],
+        [html.H1('Line {} Real-Time Monitoring'.format(line), className='title is-3')],
         [
             html.Label(
                 [
@@ -638,7 +664,7 @@ def update_title_sliders(n_intervals,pathname) :
                         marks={i: str(i)+'%' for i in [90+k*1 for k in range(11)]},
                         value=conf*100,
                     )
-                ]
+                ],
             )
         ],
         [
@@ -651,54 +677,81 @@ def update_title_sliders(n_intervals,pathname) :
                         marks={i: str(i) for i in range(1,16)},
                         value=size_th,
                     )
-                ]
+                ],
             )
         ]
     ]
 
 # CALLBACK 0b - Sliders update
 @app.callback(
-    Output('invisible','children'),
-    [Input('conf-slider','value'),Input('size-th-slider', 'value'),Input('url', 'pathname')]
+    [Output('hidden-div','children')],
+    [Input('conf-slider','value'),
+    Input('size-th-slider', 'value'),
+    Input('url', 'pathname')]
 )
 def update_hyperparams(conf,size_th,pathname) :
     line = pathname[10:]
+    try :
+        conf = round(conf/100,3)
 
-    conf = round(conf/100,3)
+        #Read dict
+        with open('../Data/Anomalies/hyperparams.json', 'r') as f:
+            hyperparams = json.load(f)
+        
+        #Update hyperparams
+        hyperparams[line]['conf'] = conf
+        hyperparams[line]['size_th'] = size_th 
 
-    #Read dict
-    with open('../Data/Anomalies/hyperparams.json', 'r') as f:
-        hyperparams = json.load(f)
-    
-    #Update hyperparams
-    hyperparams[line]['conf'] = conf
-    hyperparams[line]['size_th'] = size_th 
+        #Write dict
+        with open('../Data/Anomalies/hyperparams.json', 'w') as fp:
+            json.dump(hyperparams, fp)
 
-    #Write dict
-    with open('../Data/Anomalies/hyperparams.json', 'w') as fp:
-        json.dump(hyperparams, fp)
+    except :
+        pass
 
-    return ['']#[html.H1('Confidence set to {} and size threshold set to {} in the next update'.format(conf,size_th),className='box subtitle is-6')]
+    return [html.H1('Confidence set to {} and size threshold set to {} in the next update'.format(conf,size_th),className='box subtitle is-6')]
 
 # CALLBACK 1 - Buses Position
 @app.callback(
     [
-        Output('buses-pos','children')
+        Output('buses-pos-div','children')
     ],
     [
         Input('interval-component','n_intervals'),
         Input('update-button','n_clicks'),
-        Input('url', 'pathname')
+        Input('url', 'pathname'),
+        Input('flat-hws','hoverData')
     ]
 )
-def update_buses_position(n_intervals,n_clicks,pathname) :
+def update_buses_position(n_intervals,n_clicks,pathname,hoverData) :
+
     line = pathname[10:]
 
-    burst = read_df('burst')
-        
-    #Line dataframe
-    line_burst  = burst.loc[burst.line == line]
+    try :
+        if 'text' in hoverData['points'][0].keys() :
+            hover_buses = [int(hoverData['points'][0]['text'].split('<b>Bus: ')[1].split('</b>')[0])]
+        else :
+            hws_burst = read_df('hws_burst')
 
+            dest = hoverData['points'][0]['y'][3:]
+            x = hoverData['points'][0]['x']
+
+            direction = 1 if dest == lines_collected_dict[line]['destinations'][1] else 2
+
+            buses = hws_burst[(hws_burst.line == line) & (hws_burst.direction == direction) & \
+                                (hws_burst.busB_ttls >= x)].sort_values('busB_ttls')
+            hover_buses = [buses.busA.iloc[0],buses.busB.iloc[0]]
+
+    except :
+        hover_buses = None
+
+    burst = read_df('burst')
+
+    #Line dataframe
+    line_burst = burst.loc[burst.line == line]
+    if hover_buses :
+        line_burst = line_burst[line_burst.bus.isin(hover_buses)]
+    
     if line_burst.shape[0] < 1 :
         return [
             html.H1('No buses were found inside the line.',className ='title is-5')
@@ -710,10 +763,13 @@ def update_buses_position(n_intervals,n_clicks,pathname) :
     #And return all of them
     return [
         dcc.Graph(
-            id = 'map-{}'.format(line),
+            id = 'map',
             className = 'box',
-            style=dict(height='40vh'),
-            figure = new_map
+            style=dict(height='39vh'),
+            figure = new_map,
+            config={
+                'displayModeBar': False
+            }
         )
     ]
     
@@ -721,7 +777,7 @@ def update_buses_position(n_intervals,n_clicks,pathname) :
 # CALLBACK 2 - Buses headways representation
 @app.callback(
     [
-        Output('flat-hws','children')
+        Output('flat-hws-div','children')
     ],
     [
         Input('interval-component','n_intervals'),
@@ -747,10 +803,13 @@ def update_flat_hws(n_intervals,n_clicks,pathname) :
     #And return all of them
     return [
         dcc.Graph(
-            id = 'flat-hws-{}'.format(line),
+            id = 'flat-hws',
             className = 'box',
-            style=dict(height='40vh'),
-            figure = graph
+            style=dict(height='39vh'),
+            figure = graph,
+            config={
+                'displayModeBar': False
+            }
         )
     ]
 
@@ -758,24 +817,48 @@ def update_flat_hws(n_intervals,n_clicks,pathname) :
 # CALLBACK 3 - 1D Headways Time Series
 @app.callback(
     [
-        Output('time-series-hws','children')
+        Output('time-series-hws-div','children')
     ],
     [
         Input('interval-component','n_intervals'),
         Input('update-button','n_clicks'),
-        Input('url', 'pathname')
+        Input('url', 'pathname'),
+        Input('flat-hws','hoverData')
     ]
 )
-def update_time_series_hws(n_intervals,n_clicks,pathname) :
+def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
     line = pathname[10:]
+
+    try :
+        if 'text' in hoverData['points'][0].keys() :
+            hover_buses = [int(hoverData['points'][0]['text'].split('<b>Bus: ')[1].split('</b>')[0])]
+        else :
+            hws_burst = read_df('hws_burst')
+
+            dest = hoverData['points'][0]['y'][3:]
+            x = hoverData['points'][0]['x']
+
+            direction = 1 if dest == lines_collected_dict[line]['destinations'][1] else 2
+
+            buses = hws_burst[(hws_burst.line == line) & (hws_burst.direction == direction) & \
+                                (hws_burst.busB_ttls >= x)].sort_values('busB_ttls')
+            hover_buses = [buses.busA.iloc[0],buses.busB.iloc[0]]
+    except :
+        hover_buses = None
 
     series = read_df('series')
     
     line_series = series.loc[series.line == line]
+    
+    if hover_buses :
+        if len(hover_buses) == 1 :
+            line_series = line_series.loc[(line_series.bus1 == hover_buses[0]) | (line_series.bus2 == hover_buses[0])]
+        elif len(hover_buses) == 2 :
+            line_series = line_series.loc[(line_series.bus1 == hover_buses[0])]
 
     if line_series.shape[0] < 1 :
         return [
-            html.H1('No buses were found inside the line.',className ='title is-5')
+            html.H1('No headways to analyse. There are less than 2 buses inside each line direction.',className ='title is-5')
         ]
 
     #Create mh dist graph
@@ -784,10 +867,13 @@ def update_time_series_hws(n_intervals,n_clicks,pathname) :
     #And return all of them
     return [
         dcc.Graph(
-            id = 'time-series-hws-{}'.format(line),
+            id = 'time-series-hws',
             className = 'box',
-            style=dict(height='40vh'),
-            figure = time_series_graph
+            style=dict(height='39vh'),
+            figure = time_series_graph,
+            config={
+                'displayModeBar': False
+            }
         )
     ]
 
@@ -795,7 +881,7 @@ def update_time_series_hws(n_intervals,n_clicks,pathname) :
 # CALLBACK 4 - Mahalanobis Distance series
 @app.callback(
     [
-        Output('mdist-hws','children')
+        Output('mdist-hws-div','children')
     ],
     [
         Input('interval-component','n_intervals'),
@@ -812,7 +898,7 @@ def update_mdist_series(n_intervals,n_clicks,pathname) :
 
     if line_series.shape[0] < 1 :
         return [
-            html.H1('No buses were found inside the line.',className ='title is-5')
+            html.H1('No headways to analyse. There are less than 2 buses inside each line direction.',className ='title is-5')
         ]
 
     #Create mh dist graph
@@ -821,10 +907,13 @@ def update_mdist_series(n_intervals,n_clicks,pathname) :
     #And return all of them
     return [
         dcc.Graph(
-            id = 'mdist-hws-{}'.format(line),
+            id = 'mdist-hws',
             className = 'box',
-            style=dict(height='40vh'),
-            figure = m_dist_graph
+            style=dict(height='39vh'),
+            figure = m_dist_graph,
+            config={
+                'displayModeBar': False
+            }
         )
     ]
 
@@ -832,7 +921,7 @@ def update_mdist_series(n_intervals,n_clicks,pathname) :
 # CALLBACK 5 - Anomalies series
 @app.callback(
     [
-        Output('anom-hws','children')
+        Output('anom-hws-div','children')
     ],
     [
         Input('interval-component','n_intervals'),
@@ -840,7 +929,7 @@ def update_mdist_series(n_intervals,n_clicks,pathname) :
         Input('url', 'pathname')
     ]
 )
-def update_buses_position(n_intervals,n_clicks,pathname) :
+def update_anomalies_table(n_intervals,n_clicks,pathname) :
     line = pathname[10:]
 
     anomalies = read_df('anomalies')
@@ -852,7 +941,7 @@ def update_buses_position(n_intervals,n_clicks,pathname) :
 
     #And return all of them
     return [
-        html.Div(className = 'box', style=dict(height='40vh'), children = [
+        html.Div(className = 'box', style=dict(height='39vh'), children = [
             html.H2('Detected anomalies',className = 'subtitle is-5'),
             anoms_table
         ])

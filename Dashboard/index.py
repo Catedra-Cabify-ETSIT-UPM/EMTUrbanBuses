@@ -23,7 +23,7 @@ app.index_string = '''
                     font-size: 30px;
                 }
                 .navlogo {
-                    background: linear-gradient(to left, white, #9e2de2);
+                    background: linear-gradient(to left, white, #1E90FF);
                 }
             </style>
         {%favicon%}
@@ -126,9 +126,11 @@ app.layout = html.Div([
               [Input('url', 'pathname')])
 def display_page(pathname):
     if (pathname == '/home') or (pathname == '/'):
-         return app_home.layout
+        return app_home.layout
     elif pathname[0:9] == '/realtime':
-         return app1.layout
+        if pathname[10:] not in ['1','44','82','132','133'] :
+            return html.H1('Line not available for real time analysis yet',className='title is-3')
+        return app1.layout
     else:
         return app_credits.layout
 
