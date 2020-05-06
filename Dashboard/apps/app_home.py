@@ -51,7 +51,7 @@ layout = html.Div(className = '', children = [
     html.Div(className = 'box', children = [
         html.Div(className='columns', children = [
             html.Div(className='column',children = [
-                html.H1('Desired Lines Map',className = 'title is-3'),
+                html.H1('Desired Lines Analysis',className = 'title is-3'),
                 html.H2('Blue = From A to B, Red = From B to A',className = 'subtitle is-5'),
             ]),
             html.Div(className='column', children = [
@@ -60,8 +60,8 @@ layout = html.Div(className = '', children = [
                         "Lines",
                         dcc.Dropdown(
                             id="lineIds-select",
-                            options=[{"label": i, "value": i} for i in ['Night-time','Day-time','All'] + list(line_stops_dict.keys())],
-                            value=['1','44','82','91','92','99','132','133','502','506'],
+                            options=[{"label": i, "value": i} for i in ['Selected','Night-time','Day-time','All'] + list(line_stops_dict.keys())],
+                            value=['Selected'],
                             searchable=True,
                             multi=True
                         ),
@@ -277,7 +277,7 @@ def gen_graph(G):
         name='net',
         marker=dict(
             symbol='circle-dot',
-            size=[G.out_degree(k,weight='weight') for k in G.nodes()],
+            size=[G.out_degree(k,weight='weight')+2 for k in G.nodes()],
             color=colors[2],
             line=dict(
                 color='black',
@@ -293,7 +293,7 @@ def gen_graph(G):
         hoverinfo='text'
     )
     layout = go.Layout(
-        title="<b>Stops network graph - Stop size proportional to number of lines it belongs to",
+        title="<b>Stops network graph",
         showlegend=False,
         margin=dict(r=0, l=0, t=30, b=0),
         xaxis = {
@@ -361,7 +361,9 @@ def update_lines_graph(lineIds):
                 for line in line_stops_dict.keys():
                     if line in night_lines :
                         lineIds.append(line)
-            
+            elif 'Selected' :
+                lineIds = ['1','44','82','91','92','99','132','133','502','506']
+
             stops_of_lines = []
             for lineId in lineIds :
                 try :
@@ -484,6 +486,8 @@ def update_lines_graph(lineIds):
         elif 'Night-time' in lineIds :
             G = stops_night_net
         else:
+            if 'Selected' :
+                lineIds = ['1','44','82','91','92','99','132','133','502','506']
             G = build_net_graph(lineIds)
             
         #Gen graph
@@ -537,6 +541,8 @@ def update_lines_graph(lineIds,selected_param,axis_type):
                     if line in night_lines :
                         lineIds.append(line)
             else:
+                if 'Selected' :
+                    lineIds = ['1','44','82','91','92','99','132','133','502','506']
                 G = build_net_graph(lineIds)
                 
             stops_of_lines = []

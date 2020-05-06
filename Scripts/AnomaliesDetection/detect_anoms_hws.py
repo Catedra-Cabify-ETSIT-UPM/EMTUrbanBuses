@@ -273,11 +273,17 @@ def get_ndim_hws (df,dim) :
     return pd.DataFrame(columns)
 
 
-def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df,conf) :
+def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df) :
     windows_dfs,headways_dfs = [],[]
     
+    #Read dict
+    with open('../../Data/Anomalies/hyperparams.json', 'r') as f:
+        hyperparams = json.load(f)
+
     #For every line
     for line in lines :
+        conf = hyperparams[line]['conf']
+
         #Process the headways
         line_df = burst_df.loc[burst_df.line == line]
 
@@ -433,7 +439,7 @@ def clean_series(series_df,anomalies_dfs,now) :
 
             seconds_ellapsed = (now - last_time).total_seconds()
 
-            if seconds_ellapsed > 600 :
+            if seconds_ellapsed > 300 :
                 #Delete series from last series df
                 series_df = series_df.loc[~final_cond]
 
@@ -445,7 +451,11 @@ def clean_series(series_df,anomalies_dfs,now) :
     return series_df,anomalies_dfs
 
 
-def detect_anomalies(burst_df,last_burst_df,series_df,conf,size_th) :
+def detect_anomalies(burst_df,last_burst_df,series_df) :
+    #Read dict
+    with open('../../Data/Anomalies/hyperparams.json', 'r') as f:
+        hyperparams = json.load(f)
+
     #Check if the burst dataframe has changed
     if last_burst_df.equals(burst_df) :
         #If it hasnt changed we return None
@@ -477,7 +487,7 @@ def detect_anomalies(burst_df,last_burst_df,series_df,conf,size_th) :
             return 'Wait'
 
     #Process headways and build dimensional dataframes
-    headways_df,windows_df = process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df,conf)
+    headways_df,windows_df = process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df)
 
     #Check for anomalies and update the time series
     series_df,anomalies_dfs = build_series_anoms(series_df,windows_df)
@@ -487,30 +497,42 @@ def detect_anomalies(burst_df,last_burst_df,series_df,conf,size_th) :
 
     #Build anomalies dataframe
     anomalies_df = pd.concat(anomalies_dfs).drop('anom',axis=1) if len(anomalies_dfs) > 0 else pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom_size'] + bus_names_all + hw_names_all)
+    
     #Get anomalies with size over threshold
-    if anomalies_df.shape[0] > 0 :
-        anomalies_df = anomalies_df.loc[anomalies_df.anom_size >= size_th]
+    lines_anomalies = []
+    for line in lines :
+        line_anomalies = anomalies_df[anomalies_df.line == line]
+        if line_anomalies.shape[0] > 0 :
+            size_th = hyperparams[line]['size_th']
+            line_anomalies = line_anomalies[line_anomalies.anom_size >= size_th]
+            lines_anomalies.append(line_anomalies)
+    try :
+        anomalies_df = pd.concat(lines_anomalies)
+    except :
+        anomalies_df = pd.DataFrame()
 
     return headways_df,series_df,anomalies_df
 
 
 def main():
-    #Read hyperparameters
     try :
-        conf = float(argv[1])
-        size_th = int(argv[2])
-    except :
-        print('Arguments passed not valid, conf value should be between 0 and 1, and size_th should be a natural number\n')
-        exit(0)
-
-    #Initialize dataframes
-    series_df = pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom','anom_size'] + bus_names_all + hw_names_all)
+        #Read last series data
+        series_df = pd.read_csv('../../Data/RealTime/series.csv',
+            dtype={
+                'line': 'str'
+            }
+        )
+        #Parse the dates
+        series_df['datetime'] = pd.to_datetime(series_df['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
+        series_df = series_df[['line','datetime','dim','m_dist','anom_size'] + bus_names_all + hw_names_all]
+    except:
+        #Initialize dataframes
+        series_df = pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom','anom_size'] + bus_names_all + hw_names_all)
+    
     last_burst_df = pd.DataFrame(columns = ['line','destination','stop','bus','datetime','estimateArrive','DistanceBus'])
 
     #Inform of the selected parameters
-    print('Detecting anomalies with the hyperparameters:')
-    print('Confidence threshold: conf = {}'.format(conf))
-    print('Anomaly size threshold: size_th = {}'.format(size_th))
+    print('Detecting anomalies.')
 
     #Look for updated data every 5 seconds
     while True :
@@ -539,7 +561,7 @@ def main():
             #Clean burst df
             burst_df = clean_data(burst_df)
             
-            result = detect_anomalies(burst_df,last_burst_df,series_df,conf,size_th)
+            result = detect_anomalies(burst_df,last_burst_df,series_df)
         except :
             time.sleep(5)
             continue
@@ -561,10 +583,11 @@ def main():
 
                 series_df.to_csv(f+'RealTime/series.csv')
 
-                if os.path.isfile(f+'Anomalies/anomalies.csv') :
-                    anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=False)
-                else :
-                    anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=True)
+                if anomalies_df.shape[0] > 0 :
+                    if os.path.isfile(f+'Anomalies/anomalies.csv') :
+                        anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=False)
+                    else :
+                        anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=True)
 
                 print('\nBurst headways and series were processed. Anomalies detected were added - {}'.format(dt.now()))
                 

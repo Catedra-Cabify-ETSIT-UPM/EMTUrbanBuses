@@ -32,6 +32,14 @@ colors = [
     '#17becf'   # blue-teal
 ]
 
+colors2 = [
+    "#023fa5", "#7d87b9", "#bec1d4", "#d6bcc0", "#bb7784", 
+    "#8e063b", "#4a6fe3", "#8595e1", "#b5bbe3", "#e6afb9", 
+    "#e07b91", "#d33f6a", "#11c638", "#8dd593", "#c6dec7", 
+    "#ead3c6", "#f0b98d", "#ef9708", "#0fcfc0", "#9cded6", 
+    "#d5eae7", "#f3e1eb", "#f6c4e1", "#f79cd4"
+]
+
 zooms = {
     '1': 12.3,
     '44': 11.8,
@@ -58,12 +66,23 @@ layout = html.Div(className = '', children = [
         html.Div(className='box', children = [
             html.Div(className='columns', children=[
                 html.Div(id='tab-title', className='column'),
+                html.Div(id='conf',className='column', style=dict(height='7.5vh')),
+                html.Div(id='size-th',className='column', style=dict(height='7.5vh')),
                 html.Div(className='column is-narrow', style=dict(height='0.5vh'), children=[
-                    html.Button('Update',className='button', id='update-button')
-                ]),
+                    html.Button('Force Update',className='button', id='update-button')
+                ])
             ]),
-            html.Div(id='live-update-data')
+            html.Div(className='columns',children=[
+                html.Div(id='buses-pos', className='column is-3'),
+                html.Div(id='flat-hws', className='column is-5'),
+                html.Div(id='time-series-hws', className='column is-4'),
+            ]),
+            html.Div(className='columns',children=[
+                html.Div(id='mdist-hws', className='column is-half'),
+                html.Div(id='anom-hws',className='column is-half')
+            ])
         ]),
+        html.Div(id='invisible', children = ['']),
         dcc.Interval(
             id='interval-component',
             interval=50*1000, # in milliseconds
@@ -80,6 +99,56 @@ pio.templates.default = 'plotly_white'
 
 
 # FUNCTIONS
+def read_df(name) :
+    if name == 'burst' :
+        #Read last burst of data
+        df = pd.read_csv('../Data/RealTime/buses_data_burst_c.csv',
+            dtype={
+                'line': 'str',
+                'destination': 'str',
+                'stop': 'uint16',
+                'bus': 'uint16',
+                'given_coords': 'bool',
+                'pos_in_burst':'uint16',
+                'estimateArrive': 'int32',
+                'DistanceBus': 'int32',
+                'request_time': 'int32',
+                'lat':'float32',
+                'lon':'float32'
+            }
+        )[['line','destination','stop','bus','datetime','estimateArrive','DistanceBus']]
+        #Parse the dates
+        df['datetime'] = pd.to_datetime(df['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
+    elif name == 'hws_burst' :
+        #Read last processed headways
+        df = pd.read_csv('../Data/RealTime/headways_burst.csv',
+            dtype={
+                'line': 'str',
+                'direction': 'uint16',
+                'busA': 'uint16',
+                'busB': 'uint16',
+                'headway':'uint16',
+                'busB_ttls':'uint16'
+            }
+        )[['line','direction','datetime','hw_pos','busA','busB','headway','busB_ttls']]
+    elif name == 'series' :
+        #Read last series data
+        df = pd.read_csv('../Data/RealTime/series.csv',
+            dtype={
+                'line': 'str'
+            }
+        )
+    elif name =='anomalies' :
+        #Read last anomalies data
+        df = pd.read_csv('../Data/Anomalies/anomalies.csv',
+            dtype={
+                'line': 'str'
+            },
+            error_bad_lines=False
+        )
+    return df
+
+
 def calculate_coords(df,stop_id,dist_to_stop) :
     '''
     Returns the calculated coordinates of the bus
@@ -261,28 +330,38 @@ def build_graph(line_hws) :
     else :
         max_dist1 = hw1.busB_ttls.max()
         #Add trace
-        graph.add_trace(go.Scatter(
-            x=hw1.busB_ttls,
-            y=[('<b>'+dest1) for direction in hw1.direction.tolist()],
-            mode='lines+markers',
-            line=dict(width=1.5, color='rgb(108, 173, 245)'),
-            showlegend=False,
-            hoverinfo='skip'
-        ))
+        for i in range(hw1.shape[0]-1):
+            N,X = 10,[hw1.iloc[i].busB_ttls,hw1.iloc[i+1].busB_ttls]
+            X_new = []
+            for k in range(N+1):
+                X_new.append(X[0]+(X[1]-X[0])*k/N)
+            
+            graph.add_trace(go.Scatter(
+                x=X_new,
+                y=[('<b>'+dest1) for i in range(N+3)],
+                mode='lines',
+                line=dict(width=1.5, color=colors2[(hw1.iloc[i+1].busA+hw1.iloc[i+1].busB)%len(colors2)]),
+                showlegend=False,
+            ))
 
     if hw2.shape[0] == 0 :
         max_dist2 = 0
     else :
         max_dist2 = hw2.busB_ttls.max()
         #Add trace
-        graph.add_trace(go.Scatter(
-            x=hw2.busB_ttls,
-            y=[('<b>'+dest2) for direction in hw2.direction.tolist()],
-            mode='lines+markers',
-            line=dict(width=1.5, color='rgb(243, 109, 90)'),
-            showlegend=False,
-            hoverinfo='skip'
-        ))
+        for i in range(hw2.shape[0]-1):
+            N,X = 10,[hw2.iloc[i].busB_ttls,hw2.iloc[i+1].busB_ttls]
+            X_new = []
+            for k in range(N+1):
+                X_new.append(X[0]+(X[1]-X[0])*k/N)
+            
+            graph.add_trace(go.Scatter(
+                x=X_new,
+                y=[('<b>'+dest2) for i in range(N+3)],
+                mode='lines',
+                line=dict(width=1.5, color=colors2[(hw2.iloc[i+1].busA+hw2.iloc[i+1].busB)%len(colors2)]),
+                showlegend=False,
+            ))
 
     #Add buses to graph
     for bus in headways.itertuples() :
@@ -312,9 +391,82 @@ def build_graph(line_hws) :
     return graph
 
 
-def build_m_dist_graph(series_df) :
+def build_time_series_graph(series_df) :
 
     graph = go.Figure()
+
+    #Set title and layout
+    graph.update_layout(
+        title='<b>1D HEADWAYS TIME SERIES</b> - (In seconds)',
+        legend_title='<b>Group ids</b>',
+        yaxis = dict(
+            nticks=20
+        ),
+        legend = dict(
+            x=-0.1,
+            y=-0.075,
+            orientation='h'
+        ),
+        margin=dict(r=0, l=0, t=40, b=0),
+        hovermode='closest'
+    )
+
+    series_df = series_df.loc[series_df.dim == 1]
+    if series_df.shape[0] < 1 :
+        return graph
+
+    #All bus names
+    bus_names_all = ['bus' + str(i) for i in range(1,3)]
+    hw_names_all = ['hw' + str(i) + str(i+1) for i in range(1,2)]
+
+    #Min and max datetimes
+    min_time = series_df.datetime.min()
+    max_time = series_df.datetime.max()
+
+    #Locate unique groups
+    unique_groups = []
+    unique_groups_df = series_df.drop_duplicates(bus_names_all)
+    for i in range(unique_groups_df.shape[0]):
+        group = [unique_groups_df.iloc[i][bus_names_all[k]] for k in range(2)]
+        unique_groups.append(group)
+
+    for group in unique_groups :
+        #Build indexing conditions
+        conds = [series_df[bus_names_all[k]] == group[k] for k in range(2)]
+        final_cond = True
+        for cond in conds :
+            final_cond &= cond
+        group_df = series_df.loc[final_cond]
+        group_df = group_df.sort_values('datetime')
+
+        name = str(group[0])
+        for bus in group[1:] :
+            if bus != 0 :
+                name+='-'+str(bus)
+            else :
+                break
+
+        #Build group trace
+        graph.add_trace(go.Scatter(
+            name=name,
+            x=group_df.datetime,
+            y=group_df.hw12,
+            mode='lines+markers',
+            line=dict(width=1.5,color=colors2[(group_df.bus1.iloc[0]+group_df.bus2.iloc[0])%len(colors2)])
+        ))
+
+    return graph
+
+
+def build_m_dist_graph(series_df,line) :
+
+    graph = go.Figure()
+
+    #Read dict
+    with open('../Data/Anomalies/hyperparams.json', 'r') as f:
+        hyperparams = json.load(f)
+    
+    conf = hyperparams[line]['conf']
 
     #Set title and layout
     graph.update_layout(
@@ -364,7 +516,6 @@ def build_m_dist_graph(series_df) :
         color = colors[dim]
 
         #Dim threshold
-        conf = 0.95
         m_th = math.sqrt(chi2.ppf(conf, df=dim))
 
         if dim != last_dim :
@@ -458,11 +609,81 @@ def build_anoms_table(anomalies_df) :
 
 # CALLBACKS
 
-# CALLBACK 1 - Live Graph of Line Buses
+# CALLBACK 0 - Title and sliders
+@app.callback(
+    [Output('tab-title','children'),Output('conf','children'),Output('size-th','children')],
+    [Input('interval-component','n_intervals'),
+    Input('url', 'pathname')]
+)
+def update_title_sliders(n_intervals,pathname) :
+    line = pathname[10:]
+
+    with open('../Data/Anomalies/hyperparams.json', 'r') as f:
+        hyperparams = json.load(f)
+    
+    conf = hyperparams[line]['conf']
+    size_th = hyperparams[line]['size_th']
+
+    #And return all of them
+    return [
+        [html.H1('Line {} Real-Time Monitoring'.format(line),className='title is-4')],
+        [
+            html.Label(
+                [
+                    "Confidence",
+                    dcc.Slider(id='conf-slider',
+                        min=90,
+                        max=100,
+                        step=0.05,
+                        marks={i: str(i)+'%' for i in [90+k*1 for k in range(11)]},
+                        value=conf*100,
+                    )
+                ]
+            )
+        ],
+        [
+            html.Label(
+                [
+                    "Size threshold",
+                    dcc.Slider(id='size-th-slider',
+                        min=1,
+                        max=15,
+                        marks={i: str(i) for i in range(1,16)},
+                        value=size_th,
+                    )
+                ]
+            )
+        ]
+    ]
+
+# CALLBACK 0b - Sliders update
+@app.callback(
+    Output('invisible','children'),
+    [Input('conf-slider','value'),Input('size-th-slider', 'value'),Input('url', 'pathname')]
+)
+def update_hyperparams(conf,size_th,pathname) :
+    line = pathname[10:]
+
+    conf = round(conf/100,3)
+
+    #Read dict
+    with open('../Data/Anomalies/hyperparams.json', 'r') as f:
+        hyperparams = json.load(f)
+    
+    #Update hyperparams
+    hyperparams[line]['conf'] = conf
+    hyperparams[line]['size_th'] = size_th 
+
+    #Write dict
+    with open('../Data/Anomalies/hyperparams.json', 'w') as fp:
+        json.dump(hyperparams, fp)
+
+    return ['']#[html.H1('Confidence set to {} and size threshold set to {} in the next update'.format(conf,size_th),className='box subtitle is-6')]
+
+# CALLBACK 1 - Buses Position
 @app.callback(
     [
-        Output('tab-title','children'),
-        Output('live-update-data','children')
+        Output('buses-pos','children')
     ],
     [
         Input('interval-component','n_intervals'),
@@ -470,124 +691,171 @@ def build_anoms_table(anomalies_df) :
         Input('url', 'pathname')
     ]
 )
-def update_graph_live(n_intervals,n_clicks,pathname) :
-    '''
-    Function that reads buses_data_burst every x seconds and updates the graphs
-
-        Parameters
-        ---
-        input_lineId_value: string
-            The line whose buses are going to be ploted
-    '''
+def update_buses_position(n_intervals,n_clicks,pathname) :
     line = pathname[10:]
-    #Read last burst of data
-    burst = pd.read_csv('../Data/RealTime/buses_data_burst_c.csv',
-        dtype={
-            'line': 'str',
-            'destination': 'str',
-            'stop': 'uint16',
-            'bus': 'uint16',
-            'given_coords': 'bool',
-            'pos_in_burst':'uint16',
-            'estimateArrive': 'int32',
-            'DistanceBus': 'int32',
-            'request_time': 'int32',
-            'lat':'float32',
-            'lon':'float32'
-        }
-    )[['line','destination','stop','bus','datetime','estimateArrive','DistanceBus']]
-    #Parse the dates
-    burst['datetime'] = pd.to_datetime(burst['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
 
-
-    #Read last processed headways
-    hws_burst = pd.read_csv('../Data/RealTime/headways_burst.csv',
-        dtype={
-            'line': 'str',
-            'direction': 'uint16',
-            'busA': 'uint16',
-            'busB': 'uint16',
-            'headway':'uint16',
-            'busB_ttls':'uint16'
-        }
-    )[['line','direction','datetime','hw_pos','busA','busB','headway','busB_ttls']]
-
-    #Read last series data
-    series_df = pd.read_csv('../Data/RealTime/series.csv',
-        dtype={
-            'line': 'str'
-        }
-    )
-
-    #Read last anomalies data
-    anomalies_df = pd.read_csv('../Data/Anomalies/anomalies.csv',
-        dtype={
-            'line': 'str'
-        }
-    )
+    burst = read_df('burst')
         
     #Line dataframe
-    line_df = burst.loc[burst.line == line]
-    line_hws = hws_burst.loc[hws_burst.line == line]
-    line_series = series_df.loc[series_df.line == line]
-    line_anoms = anomalies_df.loc[anomalies_df.line == line]
+    line_burst  = burst.loc[burst.line == line]
 
-    if line_df.shape[0] < 1 :
+    if line_burst.shape[0] < 1 :
         return [
-            [html.H1('Line {} Real-Time Monitoring'.format(line),className='title is-4')],
-            [html.H1('No buses were found inside the line.',className ='title is-5')]
+            html.H1('No buses were found inside the line.',className ='title is-5')
         ]
     
     #Create map
-    new_map = build_map(line_df)
+    new_map = build_map(line_burst)
+
+    #And return all of them
+    return [
+        dcc.Graph(
+            id = 'map-{}'.format(line),
+            className = 'box',
+            style=dict(height='40vh'),
+            figure = new_map
+        )
+    ]
+    
+
+# CALLBACK 2 - Buses headways representation
+@app.callback(
+    [
+        Output('flat-hws','children')
+    ],
+    [
+        Input('interval-component','n_intervals'),
+        Input('update-button','n_clicks'),
+        Input('url', 'pathname')
+    ]
+)
+def update_flat_hws(n_intervals,n_clicks,pathname) :
+    line = pathname[10:]
+
+    hws_burst = read_df('hws_burst')
+
+    line_hws = hws_burst.loc[hws_burst.line == line]
+
+    if line_hws.shape[0] < 1 :
+        return [
+            html.H1('No buses were found inside the line.',className ='title is-5')
+        ]
 
     #Create graph
     graph = build_graph(line_hws)
 
+    #And return all of them
+    return [
+        dcc.Graph(
+            id = 'flat-hws-{}'.format(line),
+            className = 'box',
+            style=dict(height='40vh'),
+            figure = graph
+        )
+    ]
+
+
+# CALLBACK 3 - 1D Headways Time Series
+@app.callback(
+    [
+        Output('time-series-hws','children')
+    ],
+    [
+        Input('interval-component','n_intervals'),
+        Input('update-button','n_clicks'),
+        Input('url', 'pathname')
+    ]
+)
+def update_time_series_hws(n_intervals,n_clicks,pathname) :
+    line = pathname[10:]
+
+    series = read_df('series')
+    
+    line_series = series.loc[series.line == line]
+
+    if line_series.shape[0] < 1 :
+        return [
+            html.H1('No buses were found inside the line.',className ='title is-5')
+        ]
+
     #Create mh dist graph
-    m_dist_graph = build_m_dist_graph(line_series)
+    time_series_graph = build_time_series_graph(line_series)
+    
+    #And return all of them
+    return [
+        dcc.Graph(
+            id = 'time-series-hws-{}'.format(line),
+            className = 'box',
+            style=dict(height='40vh'),
+            figure = time_series_graph
+        )
+    ]
+
+
+# CALLBACK 4 - Mahalanobis Distance series
+@app.callback(
+    [
+        Output('mdist-hws','children')
+    ],
+    [
+        Input('interval-component','n_intervals'),
+        Input('update-button','n_clicks'),
+        Input('url', 'pathname')
+    ]
+)
+def update_mdist_series(n_intervals,n_clicks,pathname) :
+    line = pathname[10:]
+
+    series = read_df('series')
+    
+    line_series = series.loc[series.line == line]
+
+    if line_series.shape[0] < 1 :
+        return [
+            html.H1('No buses were found inside the line.',className ='title is-5')
+        ]
+
+    #Create mh dist graph
+    m_dist_graph = build_m_dist_graph(line_series,line)
+
+    #And return all of them
+    return [
+        dcc.Graph(
+            id = 'mdist-hws-{}'.format(line),
+            className = 'box',
+            style=dict(height='40vh'),
+            figure = m_dist_graph
+        )
+    ]
+
+
+# CALLBACK 5 - Anomalies series
+@app.callback(
+    [
+        Output('anom-hws','children')
+    ],
+    [
+        Input('interval-component','n_intervals'),
+        Input('update-button','n_clicks'),
+        Input('url', 'pathname')
+    ]
+)
+def update_buses_position(n_intervals,n_clicks,pathname) :
+    line = pathname[10:]
+
+    anomalies = read_df('anomalies')
+    
+    line_anoms = anomalies.loc[anomalies.line == line]
 
     #Create anomalies table
     anoms_table = build_anoms_table(line_anoms)
 
     #And return all of them
     return [
-        [html.H1('Line {} Real-Time Monitoring'.format(line),className='title is-4')],
-        [
-            html.Div(className='columns',children=[
-                html.Div(className='column is-3', children=[
-                    dcc.Graph(
-                        id = 'map-{}'.format(line),
-                        className = 'box',
-                        style=dict(height='40vh'),
-                        figure = new_map
-                    )
-                ]),
-                html.Div(className='column is-half', children=[
-                    dcc.Graph(
-                        id = 'graph-{}'.format(line),
-                        className = 'box',
-                        style=dict(height='40vh'),
-                        figure = graph
-                    )
-                ])
-            ]),
-            html.Div(className='columns',children=[
-                html.Div(className='column is-half', children=[
-                    dcc.Graph(
-                        id = 'graph-mdist-{}'.format(line),
-                        className = 'box',
-                        style=dict(height='40vh'),
-                        figure = m_dist_graph
-                    )
-                ]),
-                html.Div(className='column is-half', children=[
-                    html.Div(className = 'box', children = [
-                        html.H2('Detected anomalies',className = 'subtitle is-5'),
-                        anoms_table
-                    ])
-                ])
-            ])
-        ]
+        html.Div(className = 'box', style=dict(height='40vh'), children = [
+            html.H2('Detected anomalies',className = 'subtitle is-5'),
+            anoms_table
+        ])
     ]
     
+
