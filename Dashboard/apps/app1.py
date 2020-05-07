@@ -53,12 +53,15 @@ layout = html.Div(className = '', children = [
             html.Div(id='tab-title', className='column'),
             html.Div(id='conf',className='column', style=dict(height='7vh')),
             html.Div(id='size-th',className='column', style=dict(height='7vh')),
+            html.Div(className='column is-narrow', style=dict(height='7vh',width='7vh'),children=[
+                dcc.Loading(id='new-interval-loading', type='dot', style=dict(height='7vh',width='7vh')),
+            ]),
             html.Div(className='column is-narrow', style=dict(height='0.5vh'), children=[
                 html.Button('Force Update',className='button', id='update-button')
             ])
         ]),
         html.Div(className='columns',children=[
-            html.Div(id='buses-pos-div', className='column is-3',children=[
+            html.Div(id='buses-pos-div', className='column is-3', children=[
                 dcc.Graph(
                     id = 'map',
                     className = 'box',
@@ -66,7 +69,7 @@ layout = html.Div(className = '', children = [
                     figure = go.Figure()
                 )
             ]),
-            html.Div(id='flat-hws-div', className='column is-5',children=[
+            html.Div(id='flat-hws-div', className='column is-5', children=[
                 dcc.Graph(
                     id = 'flat-hws',
                     className = 'box',
@@ -74,7 +77,7 @@ layout = html.Div(className = '', children = [
                     figure = go.Figure()
                 )
             ]),
-            html.Div(id='time-series-hws-div', className='column is-4',children=[
+            html.Div(id='time-series-hws-div', className='column is-4', children=[
                 dcc.Graph(
                     id = 'time-series-hws',
                     className = 'box',
@@ -320,7 +323,7 @@ def build_graph(line_hws) :
 
     #Set title and layout
     graph.update_layout(
-        title='<b>HEADWAYS</b> - (Hover buses or link to see more)',
+        title='<b>HEADWAYS</b> - (Hover buses or links to see more)',
         legend_title='<b>Bus ids</b>',
         xaxis = dict(
             title_text = 'Seconds remaining to destination',
@@ -635,7 +638,16 @@ def build_anoms_table(anomalies_df) :
 
 # CALLBACKS
 
-# CALLBACK 0 - Title and sliders
+# CALLBACK 0a - New interval loading
+@app.callback(
+    [Output('new-interval-loading','children')],
+    [Input('interval-component','n_intervals'),Input('update-button','n_clicks')]
+)
+def new_interval(n_intervals,n_clicks) :
+
+    return [html.H1('Loading',style={'display':'none'})]
+
+# CALLBACK 0a - Title and sliders
 @app.callback(
     [Output('tab-title','children'),Output('conf','children'),Output('size-th','children')],
     [Input('interval-component','n_intervals'),
@@ -798,20 +810,21 @@ def update_flat_hws(n_intervals,n_clicks,pathname) :
         ]
 
     #Create graph
-    graph = build_graph(line_hws)
+    flat_hws_graph = build_graph(line_hws)
+
+    graph = dcc.Graph(
+        id = 'flat-hws',
+        className = 'box',
+        style=dict(height='39vh'),
+        figure = flat_hws_graph,
+        config={
+            'displayModeBar': False,
+        },
+        clear_on_unhover=True
+    )
 
     #And return all of them
-    return [
-        dcc.Graph(
-            id = 'flat-hws',
-            className = 'box',
-            style=dict(height='39vh'),
-            figure = graph,
-            config={
-                'displayModeBar': False
-            }
-        )
-    ]
+    return [graph]
 
 
 # CALLBACK 3 - 1D Headways Time Series
@@ -864,18 +877,21 @@ def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
     #Create mh dist graph
     time_series_graph = build_time_series_graph(line_series)
     
+    graph = dcc.Graph(
+        id = 'time-series-hws',
+        className = 'box',
+        style=dict(height='39vh'),
+        figure = time_series_graph,
+        config={
+            'displayModeBar': False
+        }
+    )
+
+    #if n_intervals == 0 :
+        #graph = dcc.Loading(type='cube',children = [graph])
+
     #And return all of them
-    return [
-        dcc.Graph(
-            id = 'time-series-hws',
-            className = 'box',
-            style=dict(height='39vh'),
-            figure = time_series_graph,
-            config={
-                'displayModeBar': False
-            }
-        )
-    ]
+    return [graph]
 
 
 # CALLBACK 4 - Mahalanobis Distance series
@@ -904,18 +920,21 @@ def update_mdist_series(n_intervals,n_clicks,pathname) :
     #Create mh dist graph
     m_dist_graph = build_m_dist_graph(line_series,line)
 
+    graph = dcc.Graph(
+        id = 'mdist-hws',
+        className = 'box',
+        style=dict(height='39vh'),
+        figure = m_dist_graph,
+        config={
+            'displayModeBar': False
+        }
+    )
+    
+    #if n_intervals == 0 :
+        #graph = dcc.Loading(type='cube',children = [graph])
+
     #And return all of them
-    return [
-        dcc.Graph(
-            id = 'mdist-hws',
-            className = 'box',
-            style=dict(height='39vh'),
-            figure = m_dist_graph,
-            config={
-                'displayModeBar': False
-            }
-        )
-    ]
+    return [graph]
 
 
 # CALLBACK 5 - Anomalies series

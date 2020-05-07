@@ -495,6 +495,9 @@ def detect_anomalies(burst_df,last_burst_df,series_df) :
     #Delete series from the list that havent appeared in the last 5 minutes
     series_df,anomalies_dfs = clean_series(series_df,anomalies_dfs,now)
 
+    #Series df 
+    series_df = series_df[['line','datetime','dim','m_dist','anom','anom_size'] + bus_names_all + hw_names_all].reset_index(drop=True)
+
     #Build anomalies dataframe
     anomalies_df = pd.concat(anomalies_dfs).drop('anom',axis=1) if len(anomalies_dfs) > 0 else pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom_size'] + bus_names_all + hw_names_all)
     
@@ -532,7 +535,7 @@ def main():
     last_burst_df = pd.DataFrame(columns = ['line','destination','stop','bus','datetime','estimateArrive','DistanceBus'])
 
     #Inform of the selected parameters
-    print('Detecting anomalies.')
+    print('\n----- Detecting anomalies and preprocessing server data -----\n')
 
     #Look for updated data every 5 seconds
     while True :
@@ -589,7 +592,7 @@ def main():
                     else :
                         anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=True)
 
-                print('\nBurst headways and series were processed. Anomalies detected were added - {}'.format(dt.now()))
+                print('\n----- Burst headways and series were processed. Anomalies detected were added - {} -----\n'.format(dt.now()))
                 
                 time.sleep(5)
 

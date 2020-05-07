@@ -101,9 +101,9 @@ layout = html.Div(className = '', children = [
             ])
         ]),
         html.Div(className='columns', children=[
-            html.Div(className='column',id='lines-graph'),
-            html.Div(className='column',id='stops-net-graph'),
-            html.Div(className='column',id='top-stops-graph')
+            dcc.Loading(className='column',id='lines-graph',type='cube'),
+            dcc.Loading(className='column',id='stops-net-graph',type='cube'),
+            dcc.Loading(className='column',id='top-stops-graph',type='cube')
         ])
     ])
 ])
@@ -294,7 +294,7 @@ def gen_graph(G):
         name='net',
         marker=dict(
             symbol='circle-dot',
-            size=[G.out_degree(k,weight='weight')+2 for k in G.nodes()],
+            size=[G.out_degree(k,weight='weight')*1.5+3 for k in G.nodes()],
             color=colors[2],
             line=dict(
                 color='black',
@@ -375,7 +375,7 @@ def update_lines_graph(lineIds):
                 for line in line_stops_dict.keys():
                     if line in night_lines :
                         lineIds.append(line)
-            elif 'Selected' :
+            elif 'Selected' in lineIds:
                 lineIds = ['1','44','82','91','92','99','132','133','502','506']
 
             stops_of_lines = []
@@ -493,7 +493,7 @@ def update_lines_graph(lineIds):
             net_graph = html.Iframe(src='../assets/stops_night_net_graph.html',style=dict(height='60vh',width='100%'))
 
         else:
-            if 'Selected' :
+            if 'Selected' in lineIds:
                 lineIds = ['1','44','82','91','92','99','132','133','502','506']
             G = build_net_graph(lineIds)
     
@@ -541,7 +541,7 @@ def update_ranked_stops(lineIds,selected_param,axis_type):
                     if line in night_lines :
                         lineIds.append(line)
             else:
-                if 'Selected' :
+                if 'Selected' in lineIds:
                     lineIds = ['1','44','82','91','92','99','132','133','502','506']
                 G = build_net_graph(lineIds)
                 
