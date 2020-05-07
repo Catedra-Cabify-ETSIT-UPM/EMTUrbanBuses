@@ -481,9 +481,6 @@ def detect_anomalies(burst_df,last_burst_df,series_df) :
         day_type = 'FE'
     #Hour range
     for h_range in hour_ranges :
-        hour_range = str(h_range[0]) + '-' + str(h_range[1])
-        break
-
         if (now.hour >= h_range[0]) and (now.hour < h_range[1]) :
             hour_range = str(h_range[0]) + '-' + str(h_range[1])
             break
