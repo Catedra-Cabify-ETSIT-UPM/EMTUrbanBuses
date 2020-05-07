@@ -78,7 +78,8 @@ layout = html.Div(className = '', children = [
                     id = 'flat-hws',
                     className = 'box',
                     style=dict(height='39vh'),
-                    figure = go.Figure()
+                    figure = go.Figure(),
+                    clear_on_unhover=True
                 )
             ]),
             html.Div(id='time-series-hws-div', className='column is-4', children=[
