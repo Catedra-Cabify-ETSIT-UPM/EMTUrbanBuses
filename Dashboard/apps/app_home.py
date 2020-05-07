@@ -101,9 +101,9 @@ layout = html.Div(className = '', children = [
             ])
         ]),
         html.Div(className='columns', children=[
-            dcc.Loading(className='column',id='lines-graph',type='cube'),
-            dcc.Loading(className='column',id='stops-net-graph',type='cube'),
-            dcc.Loading(className='column',id='top-stops-graph',type='cube')
+            html.Div(className='column',id='lines-graph'),
+            html.Div(className='column',id='stops-net-graph'),
+            html.Div(className='column',id='top-stops-graph')
         ])
     ])
 ])

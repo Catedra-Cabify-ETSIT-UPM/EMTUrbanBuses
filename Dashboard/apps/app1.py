@@ -51,8 +51,12 @@ layout = html.Div(className = '', children = [
     html.Div(className='box', children = [
         html.Div(className='columns', children=[
             html.Div(id='tab-title', className='column'),
-            html.Div(id='conf',className='column', style=dict(height='7vh')),
-            html.Div(id='size-th',className='column', style=dict(height='7vh')),
+            html.Div(id='conf',className='column', style=dict(height='7vh'), children=[
+                dcc.Input(id="conf-slider", type="text", value=0, style={'display':'none'})
+            ]),
+            html.Div(id='size-th',className='column', style=dict(height='7vh'), children=[
+                dcc.Input(id="size-th-slider", type="text", value=0, style={'display':'none'})
+            ]),
             html.Div(className='column is-narrow', style=dict(height='7vh',width='7vh'),children=[
                 dcc.Loading(id='new-interval-loading', type='dot', style=dict(height='7vh',width='7vh')),
             ]),
@@ -655,7 +659,7 @@ def new_interval(n_intervals,n_clicks) :
 )
 def update_title_sliders(n_intervals,pathname) :
     line = pathname[10:]
-
+    
     with open('../Data/Anomalies/hyperparams.json', 'r') as f:
         hyperparams = json.load(f)
     
@@ -704,6 +708,9 @@ def update_title_sliders(n_intervals,pathname) :
 def update_hyperparams(conf,size_th,pathname) :
     line = pathname[10:]
     try :
+        if (conf == 0) | (size_th == 0) :
+            return [html.H1('',className='box subtitle is-6')]
+
         conf = round(conf/100,3)
 
         #Read dict
