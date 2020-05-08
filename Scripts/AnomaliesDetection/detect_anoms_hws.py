@@ -541,29 +541,34 @@ def main():
 
     #Look for updated data every 5 seconds
     while True :
-        #Read last burst of data
-        burst_df = pd.read_csv('../../Data/RealTime/buses_data_burst.csv',
-            dtype={
-                'line': 'str',
-                'destination': 'str',
-                'stop': 'uint16',
-                'bus': 'uint16',
-                'given_coords': 'bool',
-                'pos_in_burst':'uint16',
-                'estimateArrive': 'int32',
-                'DistanceBus': 'int32',
-                'request_time': 'int32',
-                'lat':'float32',
-                'lon':'float32'
-            }
-        )[['line','destination','stop','bus','datetime','estimateArrive','DistanceBus']]
+        try :
+            #Read last burst of data
+            burst_df = pd.read_csv('../../Data/RealTime/buses_data_burst.csv',
+                dtype={
+                    'line': 'str',
+                    'destination': 'str',
+                    'stop': 'uint16',
+                    'bus': 'uint16',
+                    'given_coords': 'bool',
+                    'pos_in_burst':'uint16',
+                    'estimateArrive': 'int32',
+                    'DistanceBus': 'int32',
+                    'request_time': 'int32',
+                    'lat':'float32',
+                    'lon':'float32'
+                }
+            )[['line','destination','stop','bus','datetime','estimateArrive','DistanceBus']]
 
 
-        #Parse the dates
-        burst_df['datetime'] = pd.to_datetime(burst_df['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
-        
-        #Clean burst df
-        burst_df = clean_data(burst_df)
+            #Parse the dates
+            burst_df['datetime'] = pd.to_datetime(burst_df['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
+            
+            #Clean burst df
+            burst_df = clean_data(burst_df)
+        except :
+            print('\n---- Last burst of data not found, waiting... -----\n')
+            time.sleep(10)
+            continue
         
         result = detect_anomalies(burst_df,last_burst_df,series_df)
         
@@ -593,7 +598,7 @@ def main():
                 print('\n----- Burst headways and series were processed. Anomalies detected were added - {} -----\n'.format(dt.now()))
         
             elif result == 'Wait' :
-                time.sleep(600)
+                time.sleep(120)
 
         last_burst_df = burst_df
         time.sleep(5)
