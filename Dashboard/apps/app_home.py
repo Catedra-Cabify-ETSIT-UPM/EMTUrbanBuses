@@ -150,13 +150,14 @@ def build_net_graph(lineIds):
             invalid_lines.append(line)
 
     #Initialize network graph
-    G1=nx.DiGraph()
+    G=nx.DiGraph()
 
     #Build nodes
+    ld_stops_dict = {}
     for line in lineIds :
         if line in invalid_lines :
             continue
-        ld_stops = line_stops_dict[line]['1'] + line_stops_dict[line]['2'][1:]
+        ld_stops = line_stops_dict[line]['1'] + line_stops_dict[line]['2']
 
         #Remove stops that arent in the df
         pop_indexes = []
@@ -166,77 +167,55 @@ def build_net_graph(lineIds):
                     pop_indexes.append(i)
         for pop_index in pop_indexes[-1::-1] :
             ld_stops.pop(pop_index)
+
+        #Add to dict
+        ld_stops_dict[line] = {}
+        ld_stops_dict[line] = ld_stops
 
         for i in range(len(ld_stops)) :
             stop = int(ld_stops[i])
             stop_data = stops[stops.id==stop]
             #Add node to graph if not in
             try :
-                node = G1.nodes[stop]
+                node = G.nodes[stop]
             except :
-                G1.add_node(stop)
+                G.add_node(stop)
 
             #Add coordinates of node as position
             if stop_data.shape[0] > 0 : 
                 stop_data = stop_data.iloc[0]
-                G1.nodes[stop]['name'] = stop_data.stop_name
-                G1.nodes[stop]['coords'] = (stop_data.lon,stop_data.lat)
+                G.nodes[stop]['name'] = stop_data.stop_name
+                G.nodes[stop]['coords'] = (stop_data.lon,stop_data.lat)
 
                 if line not in invalid_lines :
                     try :
-                        G1.nodes[stop]['lines'] += [int(line)]
-                        G1.nodes[stop]['lines'] = list(set(G1.nodes[stop]['lines']))
+                        G.nodes[stop]['lines'] += [int(line)]
+                        G.nodes[stop]['lines'] = list(set(G.nodes[stop]['lines']))
                     except :
-                        G1.nodes[stop]['lines'] = [int(line)]
-
-            #Add stops
-            if i > 0 :
-                G1.add_edge(int(ld_stops[i-1]), stop, weight=1)
-            if i < len(ld_stops)-1 :
-                G1.add_edge(stop, int(ld_stops[i+1]), weight=1)
+                        G.nodes[stop]['lines'] = [int(line)]
 
     #Build links
     for line in lineIds :
         if line in invalid_lines :
             continue
-        ld_stops = line_stops_dict[line]['1'] + line_stops_dict[line]['2'][1:]
-
-        #Remove stops that arent in the df
-        pop_indexes = []
-        for i in range(len(ld_stops)) :
-            if len(ld_stops) > 0 :
-                if stops[stops.id==int(ld_stops[i])].shape[0] < 1 :
-                    pop_indexes.append(i)
-        for pop_index in pop_indexes[-1::-1] :
-            ld_stops.pop(pop_index)
+        ld_stops = ld_stops_dict[line]
 
         for i in range(len(ld_stops)) :
             stop = int(ld_stops[i])
-            if i > 0 :
-                stop_bef = int(ld_stops[i-1])
-                link_lines = intersect(G1.nodes[stop_bef]['lines'], G1.nodes[stop]['lines'])
+            stop_bef = int(ld_stops[i-1])
+
+            #Back link
+            if stop_bef != stop :
+                link_lines = intersect(G.nodes[stop_bef]['lines'], G.nodes[stop]['lines'])
                 
                 link_lines_good = []
                 for line in link_lines :
-                    line_stops = line_stops_dict[str(line)]['1'] + line_stops_dict[str(line)]['2'][1:]
-                    if issubset([str(stop_bef),str(stop)],line_stops):
+                    if issubset([str(stop_bef),str(stop)],ld_stops_dict[str(line)]):
                         link_lines_good.append(line)
 
-                G1.add_edge(stop_bef, stop, weight=len(link_lines_good), lines=link_lines_good)
+                G.add_edge(stop_bef, stop, weight=len(link_lines_good), lines=link_lines_good)
 
-            if i < len(ld_stops)-1 :
-                stop_aft = int(ld_stops[i+1])
-                link_lines = intersect(G1.nodes[stop_aft]['lines'], G1.nodes[stop]['lines'])
-                
-                link_lines_good = []
-                for line in link_lines :
-                    line_stops = line_stops_dict[str(line)]['1'] + line_stops_dict[str(line)]['2'][1:]
-                    if issubset([str(stop),str(stop_aft)],line_stops):
-                        link_lines_good.append(line)
-
-                G1.add_edge(stop, stop_aft, weight=len(link_lines_good), lines=link_lines_good)
-
-    return G1
+    return G
 
 def gen_graph(G):
     N = G.number_of_nodes()
@@ -294,7 +273,7 @@ def gen_graph(G):
         name='net',
         marker=dict(
             symbol='circle-dot',
-            size=[G.out_degree(k,weight='weight')*1.5+3 for k in G.nodes()],
+            size=[G.out_degree(k,weight='weight')*2+5 for k in G.nodes()],
             color=colors[2],
             line=dict(
                 color='black',
@@ -345,6 +324,7 @@ def intersect(lst1, lst2):
     return list(set(lst1) & set(lst2))
 
 def issubset(lst1,lst2):
+    lst2 = lst2 + [lst2[0]]
     for i in range(len(lst2)-len(lst1)) :
         if lst1 == lst2[i:i+len(lst1)] :
             return True

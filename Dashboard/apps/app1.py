@@ -5,6 +5,7 @@ import dash_table
 from dash.dependencies import Input, Output
 
 import pandas as pd
+pd.options.mode.chained_assignment = None
 import json
 
 import plotly.graph_objects as go
@@ -155,8 +156,7 @@ def read_df(name) :
         df = pd.read_csv('../Data/Anomalies/anomalies.csv',
             dtype={
                 'line': 'str'
-            },
-            error_bad_lines=False
+            }
         )
     return df
 
@@ -598,9 +598,6 @@ def build_anoms_table(anomalies_df) :
     if anomalies_df.shape[0] < 1 :
         return 'No anomalies were detected yet.'
 
-    #Drop group duplicates
-    anomalies_df = anomalies_df.sort_values('datetime',ascending=False).drop_duplicates(bus_names_all,keep='first')
-
     #Build group names
     names = []
     for i in range(anomalies_df.shape[0]):
@@ -615,7 +612,18 @@ def build_anoms_table(anomalies_df) :
         names.append(name)
 
     anomalies_df['group'] = names
-    anomalies_df = anomalies_df[['dim','group','anom_size','datetime']]
+    
+    anomalies_df = anomalies_df[['dim','group','anom_size','m_dist','datetime']]
+
+    groups_dfs = []
+    for group in anomalies_df.group.unique():
+        group_df = anomalies_df[anomalies_df.group == group]
+        group_df.assign(m_dist=group_df.m_dist.mean())
+        groups_dfs.append(group_df)
+
+    #Final data for the table
+    anomalies_df = pd.concat(groups_dfs)
+    anomalies_df = anomalies_df.sort_values('datetime',ascending=False).drop_duplicates('group',keep='first')
 
     table = dash_table.DataTable(
         id='table',
