@@ -358,7 +358,11 @@ def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df) :
 
     #Concat them in a dataframe
     headways_df = pd.concat(headways_dfs)
-    windows_df = pd.concat(windows_dfs)
+
+    if len(windows_dfs) > 0 :
+        windows_df = pd.concat(windows_dfs)
+    else :
+        windows_df = pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom'] + bus_names + bus_names_rest + hw_names + hw_names_rest)
 
     return headways_df,windows_df
 
@@ -570,7 +574,10 @@ def main():
             time.sleep(10)
             continue
         
-        result = detect_anomalies(burst_df,last_burst_df,series_df)
+        try :
+            result = detect_anomalies(burst_df,last_burst_df,series_df)
+        except :
+            result = None
         
         #If the data was updated write files
         if result :
