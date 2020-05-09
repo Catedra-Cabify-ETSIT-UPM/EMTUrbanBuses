@@ -42,6 +42,19 @@ colors2 = [
     "#d5eae7", "#f3e1eb", "#f6c4e1", "#f79cd4"
 ]
 
+zooms = {
+    '1': 12.7,
+    '44': 12,
+    '82': 11.6,
+    'F': 13,
+    'G': 13,
+    'U': 13,
+    '132': 11.8,
+    '133': 11.2,
+    'N2': 11.5,
+    'N6': 11.5,
+}
+
 # WE LOAD THE DATA
 stops = pd.read_csv('../Data/Static/stops.csv')
 lines_shapes = pd.read_csv('../Data/Static/lines_shapes.csv')
@@ -205,9 +218,13 @@ def calc_map_params(df) :
     df['lat'] = lats 
     center_x = df.lon.mean()
     center_y = df.lat.mean()
-
-    if df.shape[0] > 1 :
-        zoom = min(max(3*math.log(1/(min(math.sqrt((max(lons)-min(lons))**2 + (max(lats)-min(lats))**2),1))),11.5),13.5)
+    
+    if (df.shape[0] >= 3) :
+        center_x = line1.lon.mean()
+        center_y = line2.lat.mean()
+        zoom = zooms[line]
+    elif (df.shape[0] > 1) & (df.shape[0] < 3) :
+        zoom = min(max(3*math.log(1/(min(math.sqrt((max(lons)-min(lons))**2 + (max(lats)-min(lats))**2),1))),zooms[line]),13.5)
     else :
         zoom = 14
     return df,center_x,center_y,zoom
@@ -255,24 +272,6 @@ def build_map(line_df) :
         )
     )
 
-    #Add the bus points to the figure
-    for bus in line_df.itertuples() :
-        #Assign color based on bus id
-        color = colors[bus.bus%len(colors)]
-        #Bus marker
-        new_map.add_trace(go.Scattermapbox(
-            lat=[bus.lat],
-            lon=[bus.lon],
-            mode='markers',
-            marker=go.scattermapbox.Marker(
-                size=20,
-                color=color,
-                opacity=1
-            ),
-            text=[bus.bus],
-            hoverinfo='text'
-        ))
-
     #Select line stops
     if line_df[line_df.destination == dest1].shape[0] < 1 :
         stop_names = lines_collected_dict[line]['2']['stops'][1:]
@@ -292,9 +291,9 @@ def build_map(line_df) :
         lon=line_stops.lon,
         mode='markers',
         marker=go.scattermapbox.Marker(
-            size=8,
-            color='green',
-            opacity=0.7
+            size=10,
+            color='#2F4F4F',
+            opacity=0.5
         ),
         text=line_stops.id,
         hoverinfo='text'
@@ -302,14 +301,33 @@ def build_map(line_df) :
 
     #Add lines to the figure
     for line_shape in lines_hovered :
-        color = 'rgb(108, 173, 245)' if line_shape.iloc[0].direction == 1 else 'rgb(243, 109, 90)'
+        color = '#1E90FF' if line_shape.iloc[0].direction == 1 else '#B22222'
         new_map.add_trace(go.Scattermapbox(
             lat=line_shape.lat,
             lon=line_shape.lon,
             mode='lines',
-            line=dict(width=1.5, color=color),
+            line=dict(width=2, color=color),
             text='Línea : {}-{}'.format(line,line_shape.iloc[0].direction),
-            hoverinfo='skip'
+            hoverinfo='skip',
+            opacity=1
+        ))
+
+    #Add the bus points to the figure
+    for bus in line_df.itertuples() :
+        #Assign color based on bus id
+        color = colors[bus.bus%len(colors)]
+        #Bus marker
+        new_map.add_trace(go.Scattermapbox(
+            lat=[bus.lat],
+            lon=[bus.lon],
+            mode='markers',
+            marker=go.scattermapbox.Marker(
+                size=25,
+                color=color,
+                opacity=0.95
+            ),
+            text=[bus.bus],
+            hoverinfo='text'
         ))
 
     #And finally we return the map
@@ -369,7 +387,7 @@ def build_graph(line_hws) :
                 x=X_new,
                 y=[('<b>'+dest1) for i in range(len(X_new))],
                 mode='lines',
-                line=dict(width=1.5, color=colors2[(hw1.iloc[i+1].busA+hw1.iloc[i+1].busB)%len(colors2)]),
+                line=dict(width=2, color=colors2[(hw1.iloc[i+1].busA+hw1.iloc[i+1].busB)%len(colors2)]),
                 showlegend=False,
                 hoverinfo='text',
                 text='<b>Bus group: ' + str(hw1.iloc[i+1].busA) + '-' + str(hw1.iloc[i+1].busB) + '</b> <br>' + \
@@ -391,7 +409,7 @@ def build_graph(line_hws) :
                 x=X_new,
                 y=[('<b>'+dest2) for i in range(len(X_new))],
                 mode='lines',
-                line=dict(width=1.5, color=colors2[(hw2.iloc[i+1].busA+hw2.iloc[i+1].busB)%len(colors2)]),
+                line=dict(width=3, color=colors2[(hw2.iloc[i+1].busA+hw2.iloc[i+1].busB)%len(colors2)]),
                 showlegend=False,
                 hoverinfo='text',
                 text='<b>Bus group: ' + str(hw2.iloc[i+1].busA) + '-' + str(hw2.iloc[i+1].busB) + '</b> <br>' + \
@@ -415,7 +433,7 @@ def build_graph(line_hws) :
             x=[bus.busB_ttls],
             y=['<b>'+dest],
             marker=dict(
-                size=20,
+                size=25,
                 color=color
             ),
             text=['<b>Bus: ' + str(bus.busB) + '</b> <br>' + str(bus.headway)+'s to next bus <br>' + str(bus.busB_ttls) + 's to last stop'],
@@ -487,7 +505,7 @@ def build_time_series_graph(series_df) :
             x=group_df.datetime,
             y=group_df.hw12,
             mode='lines+markers',
-            line=dict(width=1.5,color=colors2[(group_df.bus1.iloc[0]+group_df.bus2.iloc[0])%len(colors2)])
+            line=dict(width=3,color=colors2[(group_df.bus1.iloc[0]+group_df.bus2.iloc[0])%len(colors2)])
         ))
 
     return graph

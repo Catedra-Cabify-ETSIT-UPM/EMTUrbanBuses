@@ -398,8 +398,8 @@ def update_lines_graph(lineIds):
             mode='markers',
             marker=go.scattermapbox.Marker(
                 size=10,
-                color='green',
-                opacity=0.7
+                color='#2F4F4F',
+                opacity=0.9
             ),
             text=stops_selected.id,
             hoverinfo='text'
@@ -407,7 +407,7 @@ def update_lines_graph(lineIds):
         #Add lines to the figure
         for line_id in lines_selected.line_id.unique() :
             for direction in [1,2] :
-                color = 'blue' if direction == 1 else 'red'
+                color = '#1E90FF' if direction == 1 else '#B22222'
                 line_dir_df = lines_selected.loc[(lines_selected.line_id == line_id) & (lines_selected.direction == direction)]
                 fig.add_trace(go.Scattermapbox(
                     lat=line_dir_df.lat,
@@ -415,7 +415,8 @@ def update_lines_graph(lineIds):
                     mode='lines',
                     line=dict(width=2, color=color),
                     text='Línea : {}-{}'.format(line_id,direction),
-                    hoverinfo='text'
+                    hoverinfo='text',
+                    opacity=1
                 ))
 
         #And set the figure layout
