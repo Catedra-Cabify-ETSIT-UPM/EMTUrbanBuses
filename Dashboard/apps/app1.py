@@ -497,10 +497,14 @@ def build_m_dist_graph(series_df,line) :
     graph = go.Figure()
 
     #Read dict
-    with open('../Data/Anomalies/hyperparams.json', 'r') as f:
-        hyperparams = json.load(f)
-    
-    conf = hyperparams[line]['conf']
+    while True :
+        try :
+            with open('../Data/Anomalies/hyperparams.json', 'r') as f:
+                hyperparams = json.load(f)
+            conf = hyperparams[line]['conf']
+            break
+        except :
+            continue
 
     #Set title and layout
     graph.update_layout(
@@ -618,7 +622,7 @@ def build_anoms_table(anomalies_df) :
     groups_dfs = []
     for group in anomalies_df.group.unique():
         group_df = anomalies_df[anomalies_df.group == group]
-        group_df.assign(m_dist=group_df.m_dist.mean())
+        group_df.assign(m_dist=round(group_df.m_dist.mean(),4))
         groups_dfs.append(group_df)
 
     #Final data for the table
