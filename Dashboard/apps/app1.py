@@ -6,6 +6,7 @@ from dash.dependencies import Input, Output
 
 import pandas as pd
 pd.options.mode.chained_assignment = None
+
 import json
 
 import plotly.graph_objects as go
@@ -622,7 +623,7 @@ def build_anoms_table(anomalies_df) :
     groups_dfs = []
     for group in anomalies_df.group.unique():
         group_df = anomalies_df[anomalies_df.group == group]
-        group_df.assign(m_dist=round(group_df.m_dist.mean(),4))
+        group_df['m_dist'] = round(group_df.m_dist.mean(),4)
         groups_dfs.append(group_df)
 
     #Final data for the table
@@ -633,10 +634,10 @@ def build_anoms_table(anomalies_df) :
         id='table',
         filter_action='native',
         sort_action='native',
-        page_size= 5,
+        page_size= 10,
         style_header={
             'color':'white',
-            'backgroundColor': 'lightseagreen'
+            'backgroundColor': '#6A5ACD'
         },
         style_cell={
             'padding': '3px',

@@ -23,7 +23,7 @@ app.index_string = '''
                     font-size: 30px;
                 }
                 .navlogo {
-                    background: linear-gradient(to left, white, #1E90FF);
+                    background: linear-gradient(to left, white, #6A5ACD);
                 }
             </style>
         {%favicon%}
