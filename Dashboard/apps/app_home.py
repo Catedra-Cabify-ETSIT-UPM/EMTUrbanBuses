@@ -109,9 +109,12 @@ layout = html.Div(className = '', children = [
                     dcc.Graph(id='hovered-stop-map', figure=go.Figure(),  config={'displayModeBar': False}, style={'display':'none'})
                 ])
             ]),
-            html.Div(className='column',children=[
+            html.Div(className='column', style={'position':'relative'}, children=[
                 html.Div(className='box', id='stops-net-graph', children=[
                     dcc.Graph(id='net-graph', figure=go.Figure(), style={'display':'none'}, clear_on_unhover=True, config={'displayModeBar': False})
+                ]),
+                html.Div(id='hovered-stop-graph', className='box', style={'position':'absolute', 'top':'0', 'right':'0', 'z-index':'0'}, children = [
+                    dcc.Graph(id='hovered-stop-subgraph', figure=go.Figure(),  config={'displayModeBar': False}, style={'display':'none'})
                 ])
             ]),
             html.Div(className='column',children=[
@@ -303,7 +306,7 @@ def gen_graph(G):
     #pos=nx.spring_layout(G)
     
     Xv=[G.nodes[k]['coords'][0] for k in G.nodes()]
-    Yv=[-G.nodes[k]['coords'][1] for k in G.nodes()]
+    Yv=[G.nodes[k]['coords'][1] for k in G.nodes()]
     
     center_x = mean(Xv)
     center_y = mean(Yv)
@@ -312,7 +315,7 @@ def gen_graph(G):
     for edge in G.edges:
         edge_nodes.append((edge[0],edge[1]))
         Xed.append([G.nodes[edge[0]]['coords'][0],G.nodes[edge[1]]['coords'][0]])
-        Yed.append([-G.nodes[edge[0]]['coords'][1],-G.nodes[edge[1]]['coords'][1]])
+        Yed.append([G.nodes[edge[0]]['coords'][1],G.nodes[edge[1]]['coords'][1]])
         Wed+=[G.edges[edge]['weight']]
         Led+=[G.edges[edge]['lines']]
         
@@ -379,7 +382,6 @@ def gen_graph(G):
             'showgrid':False,
             'showline':False,
             'zeroline':False,
-            'autorange':'reversed',
             'visible':False
         }
     )
@@ -408,6 +410,17 @@ def issubset(lst1,lst2):
         if lst1 == lst2[i:i+len(lst1)] :
             return True
     return False
+
+def get_neighbors(G,node) :
+    node_edges = list(G.edges(node))
+    node_neighbors = []
+    for edge in node_edges :
+        if edge[0] == node :
+            node_neighbors.append(edge[1])
+        else :
+            node_neighbors.append(edge[0])
+    return node_neighbors
+
 
 # CALLBACKS
 
@@ -569,7 +582,10 @@ def update_ranked_stops(lineIds,selected_param,axis_type):
 
         if stops_pr.shape[0] < 1 :
             #If there is an error we ask for a valid line id
-            return 'Please select one or multiple line ids from the list'
+            return [
+                html.H1('Please select one or multiple line ids from the list',className='subtitle is-3'),
+                dcc.Graph(id = 'stops-rank-graph', figure = go.Figure(), style={'display':'none','height':'60vh'}, clear_on_unhover=True, config={'displayModeBar': False})
+            ]
 
         #Gen bar graph
         top_stops_graph = build_bar_graph(stops_pr,selected_param,axis_type)
@@ -589,7 +605,7 @@ def update_ranked_stops(lineIds,selected_param,axis_type):
 # CALLBACK 4 - Hovered Stop Data and Location 
 @app.callback(Output('hovered-stop-info','children'),
               [Input('lineIds-select','value'),
-              Input('lines-map','hoverData'),Input('net-graph','hoverData'),Input('stops-rank-graph','hoverData')])
+              Input('lines-map','clickData'),Input('net-graph','clickData'),Input('stops-rank-graph','clickData')])
 def update_hovered_stop_info(lineIds,hoverData1,hoverData2,hoverData3) :
     #Hover data
     hovered = True
@@ -687,6 +703,90 @@ def update_hovered_stop_info(lineIds,hoverData1,hoverData2,hoverData3) :
             html.Div(style={'width':'30vh'}, children=[
                 html.H1('[{}] {}'.format(stop.id,stop.stop_name), className='subtitle is-5'),
                 dcc.Graph(id='hovered-stop-map', figure=stop_map, style={'height':'25vh'}, config={'displayModeBar': False})
+            ])
+        ]
+    else :
+        return 'Hover a stop'
+
+# CALLBACK 5 - Hovered Stop Graph
+@app.callback(Output('hovered-stop-graph','children'),
+              [Input('lineIds-select','value'),
+              Input('lines-map','clickData'),Input('net-graph','clickData'),Input('stops-rank-graph','clickData')])
+def update_hovered_stop_info(lineIds,hoverData1,hoverData2,hoverData3) :
+    #Hover data
+    hovered = True
+
+    try :
+        if (hoverData1) :
+            stop_id = hoverData1['points'][0]['text'].split('[')[1].split(']')[0]
+        elif (hoverData2) : 
+            stop_id = hoverData2['points'][0]['text'].split('[')[1].split(']')[0]
+        elif (hoverData3) :
+            stop_id = hoverData3['points'][0]['label'].split('[')[1].split(']')[0]
+        else :
+            hovered = False
+    except :
+        hovered = False
+
+    if hovered :
+        if type(lineIds) is str:
+            lineIds = [lineIds]
+        
+        #Nodes for the graph
+        if 'All (Slow charging)' in lineIds :
+            G = stops_net
+        elif 'Day-time (Slow charging)' in lineIds :
+            G = stops_day_net
+        elif 'Night-time' in lineIds :
+            G = stops_night_net
+        else:
+            if 'Selected' in lineIds:
+                lineIds = ['1','44','82','91','92','99','132','133','502','506']
+            G = build_net_graph(lineIds)
+    
+        #Neighbours set
+        stop_nodes = get_subnet_nodes([str(k) for k in G.nodes[int(stop_id)]['lines']])
+
+        #Gen subgraph
+        G_sub = G.subgraph(stop_nodes)
+        stop_subgraph = gen_graph(G_sub)
+
+        stop = stops[stops.id == int(stop_id)].iloc[0]
+
+        stop_subgraph.add_trace(go.Scatter(
+            x=[stop.lon],
+            y=[stop.lat],
+            mode='markers',
+            name='net',
+            marker=dict(
+                symbol='circle-dot',
+                size=[G.out_degree(int(stop_id),weight='weight')*2+5],
+                color='orange',
+                line=dict(
+                    color='black',
+                    width=1
+                ),
+                opacity=0.9
+            ),
+            text=['<b>[' + stop_id + '] ' + str(G.nodes[int(stop_id)]['name']) +  '</b>'\
+                '<br>Out Degree: ' + str(G.out_degree(int(stop_id),weight='weight')) + \
+                '<br>In Degree: ' + str(G.in_degree(int(stop_id),weight='weight')) + \
+                '<br>Lines: ' + str(G.nodes[int(stop_id)]['lines'])],
+            hoverinfo='text'
+        ))
+
+        stop_subgraph.update_layout(
+            xaxis = dict(
+                range=(stop.lon-0.005, stop.lon+0.005)
+            ),
+            yaxis = dict(
+                range=(stop.lat-0.005, stop.lat+0.005)
+            )
+        )
+        return [
+            html.Div(style={'width':'30vh'}, children=[
+                html.H1('[{}] {}'.format(stop_id,G.nodes[int(stop_id)]['name']), className='subtitle is-5'),
+                dcc.Graph(id='hovered-stop-subgraph', figure=stop_subgraph, style={'height':'25vh'}, config={'displayModeBar': False})
             ])
         ]
     else :
