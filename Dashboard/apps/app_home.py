@@ -61,7 +61,7 @@ layout = html.Div(className = '', children = [
                         "Lines",
                         dcc.Dropdown(
                             id="lineIds-select",
-                            options=[{"label": i, "value": i} for i in ['Selected','Night-time','Day-time','All'] + list(line_stops_dict.keys())],
+                            options=[{"label": i, "value": i} for i in ['Selected','Night-time','Day-time (Slow charging)','All (Slow charging)'] + list(line_stops_dict.keys())],
                             value=['Selected'],
                             searchable=True,
                             multi=True
@@ -101,32 +101,111 @@ layout = html.Div(className = '', children = [
             ])
         ]),
         html.Div(className='columns', children=[
-            html.Div(className='column',id='lines-graph'),
-            html.Div(className='column',id='stops-net-graph'),
-            html.Div(className='column',id='top-stops-graph')
+            html.Div(className='column', style={'position':'relative'}, children=[
+                html.Div(id='lines-graph',className='box', children=[
+                    dcc.Graph(id='lines-map', figure=go.Figure(), style={'display':'none'}, clear_on_unhover=True, config={'displayModeBar': False})
+                ]),
+                html.Div(id='hovered-stop-info', className='box', style={'position':'absolute', 'top':'0', 'right':'0', 'z-index':'0'}, children = [
+                    dcc.Graph(id='hovered-stop-map', figure=go.Figure(),  config={'displayModeBar': False}, style={'display':'none'})
+                ])
+            ]),
+            html.Div(className='column',children=[
+                html.Div(className='box', id='stops-net-graph', children=[
+                    dcc.Graph(id='net-graph', figure=go.Figure(), style={'display':'none'}, clear_on_unhover=True, config={'displayModeBar': False})
+                ])
+            ]),
+            html.Div(className='column',children=[
+                html.Div(className='box', id='top-stops-graph', children = [
+                    dcc.Graph(id='stops-rank-graph', figure=go.Figure(), style={'display':'none'}, clear_on_unhover=True, config={'displayModeBar': False})
+                ])
+            ])
         ])
     ])
 ])
 
 #Token and styles for the mapbox api
 mapbox_access_token = 'pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrNnFwMmM0dDE2OHYzZXFwazZiZTdmbGcifQ.k5qPtvMgar7i9cbQx1fP0w'
-style_day = 'mapbox://styles/alejp1998/ck9voa0bb002y1ipcx8j00oeu'
+style = 'mapbox://styles/alejp1998/ck9voa0bb002y1ipcx8j00oeu'
 pio.templates.default = 'plotly_white'
 
 
 #FUNCTIONS
-def gen_bar_graph(top_stops,selected_param,axis_type) :
+def build_lines_map(stops_of_lines,stops_selected,lines_selected) :
+    #We set the center of the map
+    center_x = (stops_selected.lon.max()+stops_selected.lon.min())/2
+    center_y = (stops_selected.lat.max()+stops_selected.lat.min())/2
+
+    #Style depending on hour
+    now = datetime.datetime.now()
+
+    #We create the figure object
+    fig = go.Figure()
+
+    #Add lines to the figure
+    for line_id in lines_selected.line_id.unique() :
+        for direction in [1,2] :
+            color = '#1E90FF' if direction == 1 else '#B22222'
+            line_dir_df = lines_selected.loc[(lines_selected.line_id == line_id) & (lines_selected.direction == direction)]
+            fig.add_trace(go.Scattermapbox(
+                lat=line_dir_df.lat,
+                lon=line_dir_df.lon,
+                mode='lines',
+                line=dict(width=2, color=color),
+                text='Línea : {}-{}'.format(line_id,direction),
+                hoverinfo='text',
+                opacity=1
+            ))
+
+    #Add the stops to the figure
+    fig.add_trace(go.Scattermapbox(
+        lat=stops_selected.lat,
+        lon=stops_selected.lon,
+        mode='markers',
+        marker=go.scattermapbox.Marker(
+            size=10,
+            color='#2F4F4F',
+            opacity=0.9
+        ),
+        text=['<b>[' + str(stop.id) + '] ' + stop.stop_name +  '</b>' for stop in stops_selected.itertuples()],
+        hoverinfo='text'
+    ))
+
+    #And set the figure layout
+    fig.update_layout(
+        title='<b>LINES AND STOPS ON THE MAP</b> - {} Different stops'.format(len(stops_of_lines)),
+        margin=dict(r=0, l=0, t=30, b=0),
+        hovermode='closest',
+        showlegend=False,
+        mapbox=dict(
+            accesstoken=mapbox_access_token,
+            bearing=0,
+            center=dict(
+                lat=center_y,
+                lon=center_x
+            ),
+            pitch=0,
+            zoom=11.7,
+            style=style
+        )
+    )
+
+    return fig
+
+
+def build_bar_graph(top_stops,selected_param,axis_type) :
     #Sort values
     top_stops = top_stops.sort_values(selected_param,ascending=False).iloc[0:15]
 
-    unique_stops = top_stops.stop_name.unique().tolist()
-
     bar_graph = go.Figure()
-    for unique_stop in unique_stops :
-        top_stop = top_stops[top_stops.stop_name == unique_stop]
-        bar_graph.add_trace(go.Bar(x=[unique_stop],
-            y=[top_stop[selected_param].iloc[0]],
-            name=unique_stop
+    for i in range(top_stops.shape[0]) :
+        stop = top_stops.iloc[i]
+        bar_graph.add_trace(go.Bar(
+            x=['[' + str(stop.name) + '] ' + stop.stop_name],
+            y=[stop[selected_param]],
+            name=stop.stop_name,
+            text='<b>[' + str(stop.name) + '] ' + stop.stop_name +  '</b>'\
+              '<br>{}: '.format(selected_param) + str(round(stop[selected_param],6)),
+            hoverinfo='text'
         ))
 
     bar_graph.update_layout(
@@ -333,19 +412,19 @@ def issubset(lst1,lst2):
 # CALLBACKS
 
 # CALLBACK 1 - Requested Lines Plotting
-@app.callback(Output(component_id = 'lines-graph',component_property = 'children'),
-              [Input(component_id = 'lineIds-select',component_property = 'value')])
+@app.callback(Output('lines-graph','children'),
+              [Input('lineIds-select','value')])
 def update_lines_graph(lineIds):
     try :
         if type(lineIds) is str:
             lineIds = [lineIds]
         
-        if 'All' in lineIds :
+        if 'All (Slow charging)' in lineIds :
             stops_of_lines = stops.id.tolist()
             stops_selected = stops
             lines_selected = lines_shapes
         else:
-            if 'Day-time' in lineIds :
+            if 'Day-time (Slow charging)' in lineIds :
                 lineIds = []
                 for line in line_stops_dict.keys():
                     if line not in night_lines :
@@ -372,144 +451,80 @@ def update_lines_graph(lineIds):
             stops_of_lines = list(set(stops_of_lines))
             stops_selected = stops.loc[stops.id.isin(stops_of_lines)]
 
-            if type(lineIds) is list:
-                lineIds = [int(i) for i in lineIds]
-                lines_selected = lines_shapes.loc[lines_shapes.line_id.isin(lineIds)]
-            else :
-                lines_selected = lines_shapes.loc[lines_shapes.line_id==int(lineIds)]
+            lineIds = [int(i) for i in lineIds]
+            lines_selected = lines_shapes.loc[lines_shapes.line_id.isin(lineIds)]
 
-        #We set the center of the map
-        center_x = stops_selected.lon.mean()
-        center_y = stops_selected.lat.mean()
-
-        #Style depending on hour
-        now = datetime.datetime.now()
-        if (datetime.time(6,0,0) <= now.time() <= datetime.time(23,30,0)) :
-            style = style_day
-        else :
-            style = style_night
-
-        #We create the figure object
-        fig = go.Figure()
-        #Add the stops to the figure
-        fig.add_trace(go.Scattermapbox(
-            lat=stops_selected.lat,
-            lon=stops_selected.lon,
-            mode='markers',
-            marker=go.scattermapbox.Marker(
-                size=10,
-                color='#2F4F4F',
-                opacity=0.9
-            ),
-            text=stops_selected.id,
-            hoverinfo='text'
-        ))
-        #Add lines to the figure
-        for line_id in lines_selected.line_id.unique() :
-            for direction in [1,2] :
-                color = '#1E90FF' if direction == 1 else '#B22222'
-                line_dir_df = lines_selected.loc[(lines_selected.line_id == line_id) & (lines_selected.direction == direction)]
-                fig.add_trace(go.Scattermapbox(
-                    lat=line_dir_df.lat,
-                    lon=line_dir_df.lon,
-                    mode='lines',
-                    line=dict(width=2, color=color),
-                    text='Línea : {}-{}'.format(line_id,direction),
-                    hoverinfo='text',
-                    opacity=1
-                ))
-
-        #And set the figure layout
-        fig.update_layout(
-            title='<b>LINES AND STOPS ON THE MAP',
-            margin=dict(r=0, l=0, t=30, b=0),
-            hovermode='closest',
-            showlegend=False,
-            mapbox=dict(
-                accesstoken=mapbox_access_token,
-                bearing=0,
-                center=dict(
-                    lat=center_y,
-                    lon=center_x
-                ),
-                pitch=0,
-                zoom=11.5,
-                style=style
-            )
-        )
+        lines_map = build_lines_map(stops_of_lines,stops_selected,lines_selected)
 
         #And finally we return the graph element
         if len(stops_of_lines)==0 :
-            return 'Please select one or multiple line ids from the list'
+            return [
+                html.H1('Please select one or multiple line ids from the list',className='subtitle is-3'),
+                dcc.Graph(id = 'lines-map',figure = go.Figure(),style={'display':'none','height':'60vh'}, clear_on_unhover=True, config={'displayModeBar': False})
+            ]
         else :
             return [
-                dcc.Graph(
-                    id = 'map',
-                    style=dict(height='60vh'),
-                    figure = fig
-                ),
-                html.H2(
-                    'Number of different stops involved : {}'.format(len(stops_of_lines)),
-                    className = 'subtitle is-5'
-                )
+                dcc.Graph(id = 'lines-map',style=dict(height='60vh'), figure = lines_map, clear_on_unhover=True, config={'displayModeBar': False})
             ]
     except :
         #If there is an error we ask for a valid line id
-        return 'Please select one or multiple line ids from the list'
+        return [
+            html.H1('Please select one or multiple line ids from the list',className='subtitle is-3'),
+            dcc.Graph(id = 'lines-map',figure = go.Figure(),style={'display':'none','height':'60vh'}, clear_on_unhover=True, config={'displayModeBar': False})
+        ]
 
 # CALLBACK 2 - Requested Lines Net Graph
-@app.callback(Output(component_id = 'stops-net-graph',component_property = 'children'),
-              [Input(component_id = 'lineIds-select',component_property = 'value')])
+@app.callback(Output('stops-net-graph','children'),
+              [Input('lineIds-select','value')])
 def update_lines_graph(lineIds):
     try :
+        
         if type(lineIds) is str:
             lineIds = [lineIds]
         
         #Nodes for the graph
-        if 'All' in lineIds :
-            net_graph = html.Iframe(src='../assets/stops_net_graph.html',style=dict(height='60vh',width='100%'))
-        elif 'Day-time' in lineIds :
-            net_graph = html.Iframe(src='../assets/stops_day_net_graph.html',style=dict(height='60vh',width='100%'))
+        if 'All (Slow charging)' in lineIds :
+            G = stops_net
+        elif 'Day-time (Slow charging)' in lineIds :
+            G = stops_day_net
         elif 'Night-time' in lineIds :
-            net_graph = html.Iframe(src='../assets/stops_night_net_graph.html',style=dict(height='60vh',width='100%'))
-
+            G = stops_night_net
         else:
             if 'Selected' in lineIds:
                 lineIds = ['1','44','82','91','92','99','132','133','502','506']
             G = build_net_graph(lineIds)
     
-            #Gen graph
-            net_graph = gen_graph(G)
-            net_graph = dcc.Graph(
-                id = 'net-graph',
-                style=dict(height='60vh'),
-                figure = net_graph
-            )
+
+        #Gen graph
+        net_graph = dcc.Graph(id = 'net-graph',style=dict(height='60vh'),figure = gen_graph(G), clear_on_unhover=True, config={'displayModeBar': False})
 
         return [
             net_graph
         ]
     except: 
         #If there is an error we ask for a valid line id
-        return 'Please select one or multiple line ids from the list'
+        return [
+            html.H1('Please select one or multiple line ids from the list',className='subtitle is-3'),
+            dcc.Graph(id = 'net-graph',figure = go.Figure(),style={'display':'none','height':'60vh'}, clear_on_unhover=True, config={'displayModeBar': False})
+        ]
 
 
 # CALLBACK 3 - Ranked Stops of Graph
-@app.callback(Output(component_id = 'top-stops-graph',component_property = 'children'),
-              [Input(component_id = 'lineIds-select',component_property = 'value'),
-              Input(component_id = 'param-selector',component_property = 'value'),
-              Input(component_id = 'axis-type',component_property = 'value')])
+@app.callback(Output('top-stops-graph', 'children'),
+              [Input('lineIds-select', 'value'),
+              Input('param-selector', 'value'),
+              Input('axis-type', 'value')])
 def update_ranked_stops(lineIds,selected_param,axis_type):
     try :
         if type(lineIds) is str:
             lineIds = [lineIds]
         
         #Nodes for the graph
-        if 'All' in lineIds :
+        if 'All (Slow charging)' in lineIds :
             G = stops_net
             stops_pr = stops.set_index('id')[['stop_name']]
         else :
-            if 'Day-time' in lineIds :
+            if 'Day-time (Slow charging)' in lineIds :
                 G = stops_day_net
                 lineIds = []
                 for line in line_stops_dict.keys():
@@ -547,7 +562,6 @@ def update_ranked_stops(lineIds,selected_param,axis_type):
         in_centrality = pd.Series(nx.in_degree_centrality(G))
         out_centrality = pd.Series(nx.out_degree_centrality(G))
 
-        
         stops_pr['pagerank'] = pagerank
         stops_pr['deg_centrality'] = deg_centrality
         stops_pr['in_centrality'] = in_centrality
@@ -558,16 +572,122 @@ def update_ranked_stops(lineIds,selected_param,axis_type):
             return 'Please select one or multiple line ids from the list'
 
         #Gen bar graph
-        top_stops_graph = gen_bar_graph(stops_pr,selected_param,axis_type)
+        top_stops_graph = build_bar_graph(stops_pr,selected_param,axis_type)
 
         return [
-            dcc.Graph(
-                id = 'stops-rank-graph',
-                style=dict(height='60vh'),
-                figure = top_stops_graph
-            )
+            dcc.Graph(id = 'stops-rank-graph',style=dict(height='60vh'),figure = top_stops_graph, clear_on_unhover=True, config={'displayModeBar': False})
         ]
 
     except:
         #If there is an error we ask for a valid line id
-        return 'Please select one or multiple line ids from the list'
+        return [
+            html.H1('Please select one or multiple line ids from the list',className='subtitle is-3'),
+            dcc.Graph(id = 'stops-rank-graph', figure = go.Figure(), style={'display':'none','height':'60vh'}, clear_on_unhover=True, config={'displayModeBar': False})
+        ]
+
+
+# CALLBACK 4 - Hovered Stop Data and Location 
+@app.callback(Output('hovered-stop-info','children'),
+              [Input('lineIds-select','value'),
+              Input('lines-map','hoverData'),Input('net-graph','hoverData'),Input('stops-rank-graph','hoverData')])
+def update_hovered_stop_info(lineIds,hoverData1,hoverData2,hoverData3) :
+    #Hover data
+    hovered = True
+
+    try :
+        if (hoverData1) :
+            stop_id = hoverData1['points'][0]['text'].split('[')[1].split(']')[0]
+        elif (hoverData2) : 
+            stop_id = hoverData2['points'][0]['text'].split('[')[1].split(']')[0]
+        elif (hoverData3) :
+            stop_id = hoverData3['points'][0]['label'].split('[')[1].split(']')[0]
+        else :
+            hovered = False
+    except :
+        hovered = False
+
+    if hovered :
+        #LineIds
+        if type(lineIds) is str:
+            lineIds = [lineIds]
+            
+        if 'All (Slow charging)' in lineIds :
+            stops_of_lines = stops.id.tolist()
+            stops_selected = stops
+            lines_selected = lines_shapes
+        else:
+            if 'Day-time (Slow charging)' in lineIds :
+                lineIds = []
+                for line in line_stops_dict.keys():
+                    if line not in night_lines :
+                        lineIds.append(line)
+            elif 'Night-time' in lineIds :
+                lineIds = []
+                for line in line_stops_dict.keys():
+                    if line in night_lines :
+                        lineIds.append(line)
+            elif 'Selected' in lineIds:
+                lineIds = ['1','44','82','91','92','99','132','133','502','506']
+
+        #Create map
+        stop_map = go.Figure()
+
+        stop = stops[stops.id == int(stop_id)].iloc[0]
+
+        #And set the figure layout
+        stop_map.update_layout(
+            title='',
+            margin=dict(r=0, l=0, t=0, b=0),
+            showlegend=False,
+            mapbox=dict(
+                accesstoken='pk.eyJ1IjoiYWxlanAxOTk4IiwiYSI6ImNrYTFhMDN5aTB3a2kzbG52dmV4bXF4b3EifQ.jtFT5GtqWddniEwssyPYKQ',
+                bearing=0,
+                center=dict(
+                    lat=stop.lat,
+                    lon=stop.lon
+                ),
+                pitch=0,
+                zoom=14,
+                style=style
+            )
+        )
+
+        #Add lines to the figure
+        G = stops_net
+        stop_lines = intersect([int(k) for k in lineIds],G.nodes[stop.id]['lines'])
+
+        lines_selected = lines_shapes.loc[lines_shapes.line_id.isin(stop_lines)]
+        for line_id in lines_selected.line_id.unique() :
+            for direction in [1,2] :
+                color = '#1E90FF' if direction == 1 else '#B22222'
+                line_dir_df = lines_selected.loc[(lines_selected.line_id == line_id) & (lines_selected.direction == direction)]
+                stop_map.add_trace(go.Scattermapbox(
+                    lat=line_dir_df.lat,
+                    lon=line_dir_df.lon,
+                    mode='lines',
+                    line=dict(width=2, color=color),
+                    text='Línea : {}-{}'.format(line_id,direction),
+                    hoverinfo='text',
+                    opacity=1
+                ))
+
+        #Add the stops to the figure
+        stop_map.add_trace(go.Scattermapbox(
+            lat=[stop.lat],
+            lon=[stop.lon],
+            mode='markers',
+            marker=go.scattermapbox.Marker(
+                size=20,
+                color='#2F4F4F',
+                opacity=0.9
+            )
+        ))
+
+        return [
+            html.Div(style={'width':'30vh'}, children=[
+                html.H1('[{}] {}'.format(stop.id,stop.stop_name), className='subtitle is-5'),
+                dcc.Graph(id='hovered-stop-map', figure=stop_map, style={'height':'25vh'}, config={'displayModeBar': False})
+            ])
+        ]
+    else :
+        return 'Hover a stop'

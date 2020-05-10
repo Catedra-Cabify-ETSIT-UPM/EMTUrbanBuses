@@ -3,7 +3,7 @@ import dash_html_components as html
 from dash.dependencies import Input, Output
 
 from app import app
-from apps import app_home, app_credits, app1
+from apps import app_home, app_credits, app_realtime
 
 #APP INDEX STRING
 app.index_string = '''
@@ -131,7 +131,7 @@ def display_page(pathname):
         elif pathname[0:9] == '/realtime':
             if pathname[10:] not in ['1','44','82','132','133'] :
                 return html.H1('Line not available for real time analysis yet',className='title is-3')
-            return app1.layout
+            return app_realtime.layout
         else:
             return app_credits.layout
     except :
