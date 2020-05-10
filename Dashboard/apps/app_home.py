@@ -706,7 +706,7 @@ def update_hovered_stop_info(lineIds,hoverData1,hoverData2,hoverData3) :
             ])
         ]
     else :
-        return 'Hover a stop'
+        return 'Click a stop'
 
 # CALLBACK 5 - Hovered Stop Graph
 @app.callback(Output('hovered-stop-graph','children'),
@@ -727,7 +727,7 @@ def update_hovered_stop_info(lineIds,hoverData1,hoverData2,hoverData3) :
             hovered = False
     except :
         hovered = False
-
+    
     if hovered :
         if type(lineIds) is str:
             lineIds = [lineIds]
@@ -743,51 +743,56 @@ def update_hovered_stop_info(lineIds,hoverData1,hoverData2,hoverData3) :
             if 'Selected' in lineIds:
                 lineIds = ['1','44','82','91','92','99','132','133','502','506']
             G = build_net_graph(lineIds)
-    
-        #Neighbours set
-        stop_nodes = get_subnet_nodes([str(k) for k in G.nodes[int(stop_id)]['lines']])
 
-        #Gen subgraph
-        G_sub = G.subgraph(stop_nodes)
-        stop_subgraph = gen_graph(G_sub)
+        try :
+            #Neighbours set
+            stop_nodes = get_subnet_nodes([str(k) for k in G.nodes[int(stop_id)]['lines']])
 
-        stop = stops[stops.id == int(stop_id)].iloc[0]
+            #Gen subgraph
+            G_sub = G.subgraph(stop_nodes)
+            stop_subgraph = gen_graph(G_sub)
 
-        stop_subgraph.add_trace(go.Scatter(
-            x=[stop.lon],
-            y=[stop.lat],
-            mode='markers',
-            name='net',
-            marker=dict(
-                symbol='circle-dot',
-                size=[G.out_degree(int(stop_id),weight='weight')*2+5],
-                color='orange',
-                line=dict(
-                    color='black',
-                    width=1
+            stop = stops[stops.id == int(stop_id)].iloc[0]
+
+            stop_subgraph.add_trace(go.Scatter(
+                x=[stop.lon],
+                y=[stop.lat],
+                mode='markers',
+                name='net',
+                marker=dict(
+                    symbol='circle-dot',
+                    size=[G.out_degree(int(stop_id),weight='weight')*2+5],
+                    color='orange',
+                    line=dict(
+                        color='black',
+                        width=1
+                    ),
+                    opacity=0.9
                 ),
-                opacity=0.9
-            ),
-            text=['<b>[' + stop_id + '] ' + str(G.nodes[int(stop_id)]['name']) +  '</b>'\
-                '<br>Out Degree: ' + str(G.out_degree(int(stop_id),weight='weight')) + \
-                '<br>In Degree: ' + str(G.in_degree(int(stop_id),weight='weight')) + \
-                '<br>Lines: ' + str(G.nodes[int(stop_id)]['lines'])],
-            hoverinfo='text'
-        ))
+                text=['<b>[' + stop_id + '] ' + str(G.nodes[int(stop_id)]['name']) +  '</b>'\
+                    '<br>Out Degree: ' + str(G.out_degree(int(stop_id),weight='weight')) + \
+                    '<br>In Degree: ' + str(G.in_degree(int(stop_id),weight='weight')) + \
+                    '<br>Lines: ' + str(G.nodes[int(stop_id)]['lines'])],
+                hoverinfo='text'
+            ))
 
-        stop_subgraph.update_layout(
-            xaxis = dict(
-                range=(stop.lon-0.005, stop.lon+0.005)
-            ),
-            yaxis = dict(
-                range=(stop.lat-0.005, stop.lat+0.005)
+            stop_subgraph.update_layout(
+                title='',
+                margin=dict(r=0, l=0, t=0, b=0),
+                xaxis = dict(
+                    range=(stop.lon-0.005, stop.lon+0.005)
+                ),
+                yaxis = dict(
+                    range=(stop.lat-0.005, stop.lat+0.005)
+                )
             )
-        )
-        return [
-            html.Div(style={'width':'30vh'}, children=[
-                html.H1('[{}] {}'.format(stop_id,G.nodes[int(stop_id)]['name']), className='subtitle is-5'),
-                dcc.Graph(id='hovered-stop-subgraph', figure=stop_subgraph, style={'height':'25vh'}, config={'displayModeBar': False})
-            ])
-        ]
+            return [
+                html.Div(style={'width':'30vh'}, children=[
+                    html.H1('[{}] {}'.format(stop_id,G.nodes[int(stop_id)]['name']), className='subtitle is-5'),
+                    dcc.Graph(id='hovered-stop-subgraph', figure=stop_subgraph, style={'height':'25vh'}, config={'displayModeBar': False})
+                ])
+            ]
+        except :
+            return 'Click a stop'
     else :
-        return 'Hover a stop'
+        return 'Click a stop'
