@@ -1,7 +1,7 @@
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output
-
+from dash import callback_context as context
 
 import pandas as pd
 import json
@@ -606,17 +606,19 @@ def update_ranked_stops(lineIds,selected_param,axis_type):
 @app.callback(Output('hovered-stop-info','children'),
               [Input('lineIds-select','value'),
               Input('lines-map','clickData'),Input('net-graph','clickData'),Input('stops-rank-graph','clickData')])
-def update_hovered_stop_info(lineIds,hoverData1,hoverData2,hoverData3) :
+def update_hovered_stop_info(lineIds,clickData1,clickData2,clickData3) :
     #Hover data
     hovered = True
-
+    
     try :
-        if (hoverData1) :
-            stop_id = hoverData1['points'][0]['text'].split('[')[1].split(']')[0]
-        elif (hoverData2) : 
-            stop_id = hoverData2['points'][0]['text'].split('[')[1].split(']')[0]
-        elif (hoverData3) :
-            stop_id = hoverData3['points'][0]['label'].split('[')[1].split(']')[0]
+        if context.triggered[0]['prop_id'] == 'lines-map.clickData':
+            stop_id = clickData1['points'][0]['text'].split('[')[1].split(']')[0]
+
+        elif context.triggered[0]['prop_id'] == 'net-graph.clickData':
+            stop_id = clickData2['points'][0]['text'].split('[')[1].split(']')[0]
+        
+        elif context.triggered[0]['prop_id'] == 'stops-rank-graph.clickData':
+            stop_id = clickData3['points'][0]['label'].split('[')[1].split(']')[0]
         else :
             hovered = False
     except :
@@ -712,17 +714,19 @@ def update_hovered_stop_info(lineIds,hoverData1,hoverData2,hoverData3) :
 @app.callback(Output('hovered-stop-graph','children'),
               [Input('lineIds-select','value'),
               Input('lines-map','clickData'),Input('net-graph','clickData'),Input('stops-rank-graph','clickData')])
-def update_hovered_stop_info(lineIds,hoverData1,hoverData2,hoverData3) :
+def update_hovered_stop_info(lineIds,clickData1,clickData2,clickData3) :
     #Hover data
     hovered = True
 
     try :
-        if (hoverData1) :
-            stop_id = hoverData1['points'][0]['text'].split('[')[1].split(']')[0]
-        elif (hoverData2) : 
-            stop_id = hoverData2['points'][0]['text'].split('[')[1].split(']')[0]
-        elif (hoverData3) :
-            stop_id = hoverData3['points'][0]['label'].split('[')[1].split(']')[0]
+        if context.triggered[0]['prop_id'] == 'lines-map.clickData':
+            stop_id = clickData1['points'][0]['text'].split('[')[1].split(']')[0]
+
+        elif context.triggered[0]['prop_id'] == 'net-graph.clickData':
+            stop_id = clickData2['points'][0]['text'].split('[')[1].split(']')[0]
+        
+        elif context.triggered[0]['prop_id'] == 'stops-rank-graph.clickData':
+            stop_id = clickData3['points'][0]['label'].split('[')[1].split(']')[0]
         else :
             hovered = False
     except :
