@@ -12,6 +12,8 @@ import json
 import plotly.graph_objects as go
 import plotly.io as pio
 
+from datetime import datetime as dt
+
 import math
 
 from scipy import stats
@@ -61,6 +63,9 @@ lines_shapes = pd.read_csv('../Data/Static/lines_shapes.csv')
 with open('../Data/Static/lines_collected_dict.json', 'r') as f:
     lines_collected_dict = json.load(f)
 
+#Models parameters dictionary
+with open('../Data/Anomalies/models_params.json', 'r') as f:
+    models_params_dict = json.load(f)
 
 layout = html.Div(className = '', children = [
     html.Div(className='box', children = [
@@ -444,7 +449,7 @@ def build_graph(line_hws) :
     return graph
 
 
-def build_time_series_graph(series_df) :
+def build_time_series_graph(series_df,model,conf) :
 
     graph = go.Figure()
 
@@ -464,6 +469,7 @@ def build_time_series_graph(series_df) :
         hovermode='closest'
     )
 
+
     series_df = series_df.loc[series_df.dim == 1]
     if series_df.shape[0] < 1 :
         return graph
@@ -475,6 +481,33 @@ def build_time_series_graph(series_df) :
     #Min and max datetimes
     min_time = series_df.datetime.min()
     max_time = series_df.datetime.max()
+
+
+    #Dim threshold
+    dim = 1
+    std = model['cov_matrix']
+    mean = model['mean']
+    m_th = math.sqrt(chi2.ppf(conf, df=dim))
+    
+    #Add thresholds
+    thresholds = [(mean-std*m_th),(mean+std*m_th)]
+    for th in thresholds :
+        if th<0 :
+            th = 0
+        
+        graph.add_shape(
+            name=str(th),
+            type='line',
+            x0=min_time,
+            y0=th,
+            x1=max_time,
+            y1=th,
+            line=dict(
+                color='red',
+                width=2,
+                dash='dashdot',
+            )
+        )
 
     #Locate unique groups
     unique_groups = []
@@ -913,8 +946,39 @@ def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
             html.H1('No headways to analyse. There are less than 2 buses inside each line direction.',className ='title is-5')
         ]
 
-    #Create mh dist graph
-    time_series_graph = build_time_series_graph(line_series)
+    now = dt.now()
+    #Day type
+    if (now.weekday() >= 0) and (now.weekday() <= 4) :
+        day_type = 'LA'
+    elif now.weekday() == 5 :
+        day_type = 'SA'
+    else :
+        day_type = 'FE'
+
+    #Hour ranges to iterate over
+    hour_ranges = [[7,11], [11,15], [15,19], [19,23]]
+    #Hour range
+    for h_range in hour_ranges :
+        if (now.hour >= h_range[0]) and (now.hour < h_range[1]) :
+            hour_range = str(h_range[0]) + '-' + str(h_range[1])
+            break
+        elif (h_range == hour_ranges[-1]) :
+            print('\nHour range for {}:{} not defined. Waiting till 7am.\n'.format(now.hour,now.minute))
+            return 'Wait'
+    
+    model = models_params_dict[line][day_type][hour_range]['1']
+
+    #Read dict
+    while True :
+        try :
+            with open('../Data/Anomalies/hyperparams.json', 'r') as f:
+                hyperparams = json.load(f)
+            conf = hyperparams[line]['conf']
+            break
+        except :
+            continue
+
+    time_series_graph = build_time_series_graph(line_series,model,conf)
     
     graph = dcc.Graph(
         id = 'time-series-hws',
@@ -945,35 +1009,36 @@ def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
     ]
 )
 def update_mdist_series(n_intervals,n_clicks,pathname) :
-    line = pathname[10:]
+    try :
+        line = pathname[10:]
 
-    series = read_df('series')
-    
-    line_series = series.loc[series.line == line]
+        series = read_df('series')
+        
+        line_series = series.loc[series.line == line]
 
-    if line_series.shape[0] < 1 :
-        return [
-            html.H1('No headways to analyse. There are less than 2 buses inside each line direction.',className ='title is-5')
-        ]
+        if line_series.shape[0] < 1 :
+            return [html.H1('No headways to analyse. There are less than 2 buses inside each line direction.',className ='title is-5')]
 
-    #Create mh dist graph
-    m_dist_graph = build_m_dist_graph(line_series,line)
+        #Create mh dist graph
+        m_dist_graph = build_m_dist_graph(line_series,line)
 
-    graph = dcc.Graph(
-        id = 'mdist-hws',
-        className = 'box',
-        style=dict(height='39vh'),
-        figure = m_dist_graph,
-        config={
-            'displayModeBar': False
-        }
-    )
-    
-    #if n_intervals == 0 :
-        #graph = dcc.Loading(type='cube',children = [graph])
+        graph = dcc.Graph(
+            id = 'mdist-hws',
+            className = 'box',
+            style=dict(height='39vh'),
+            figure = m_dist_graph,
+            config={
+                'displayModeBar': False
+            }
+        )
+        
+        #if n_intervals == 0 :
+            #graph = dcc.Loading(type='cube',children = [graph])
 
-    #And return all of them
-    return [graph]
+        #And return all of them
+        return [graph]
+    except :
+        return [html.H1('No headways to analyse. There are less than 2 buses inside each line direction.',className ='title is-5')]
 
 
 # CALLBACK 5 - Anomalies series

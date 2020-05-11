@@ -1,1 +1,1 @@
-{"1": {"conf": 0.99, "size_th": 1}, "44": {"conf": 0.95, "size_th": 1}, "82": {"conf": 0.95, "size_th": 1}, "F": {"conf": 0.95, "size_th": 1}, "G": {"conf": 0.95, "size_th": 1}, "U": {"conf": 0.95, "size_th": 1}, "132": {"conf": 0.99, "size_th": 1}, "133": {"conf": 0.95, "size_th": 1}}
+{"1": {"conf": 0.99, "size_th": 1}, "44": {"conf": 0.95, "size_th": 1}, "82": {"conf": 0.95, "size_th": 1}, "F": {"conf": 0.95, "size_th": 1}, "G": {"conf": 0.95, "size_th": 1}, "U": {"conf": 0.95, "size_th": 1}, "132": {"conf": 0.998, "size_th": 1}, "133": {"conf": 0.95, "size_th": 1}}
