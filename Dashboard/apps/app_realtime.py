@@ -37,11 +37,11 @@ colors = [
 ]
 
 colors2 = [
-    "#023fa5", "#7d87b9", "#bec1d4", "#d6bcc0", "#bb7784", 
-    "#8e063b", "#4a6fe3", "#8595e1", "#b5bbe3", "#e6afb9", 
-    "#e07b91", "#d33f6a", "#11c638", "#8dd593", "#c6dec7", 
-    "#ead3c6", "#f0b98d", "#ef9708", "#0fcfc0", "#9cded6", 
-    "#d5eae7", "#f3e1eb", "#f6c4e1", "#f79cd4"
+    "#023fa5", "#7d87b9", "#bb7784", 
+    "#8e063b", "#4a6fe3", "#8595e1",
+    "#e07b91", "#d33f6a", "#11c638", 
+    "#8dd593", "#ef9708", "#0fcfc0", 
+    "#9cded6", "#f79cd4"
 ]
 
 zooms = {
@@ -392,7 +392,7 @@ def build_graph(line_hws) :
                 x=X_new,
                 y=[('<b>'+dest1) for i in range(len(X_new))],
                 mode='lines',
-                line=dict(width=2, color=colors2[(hw1.iloc[i+1].busA+hw1.iloc[i+1].busB)%len(colors2)]),
+                line=dict(width=3, color=colors2[(hw1.iloc[i+1].busA+hw1.iloc[i+1].busB)%len(colors2)]),
                 showlegend=False,
                 hoverinfo='text',
                 text='<b>Bus group: ' + str(hw1.iloc[i+1].busA) + '-' + str(hw1.iloc[i+1].busB) + '</b> <br>' + \

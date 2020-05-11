@@ -624,6 +624,8 @@ def update_hovered_stop_info(lineIds,clickData1,clickData2,clickData3) :
     except :
         hovered = False
 
+
+
     if hovered :
         #LineIds
         if type(lineIds) is str:
