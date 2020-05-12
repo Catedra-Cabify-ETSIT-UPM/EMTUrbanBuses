@@ -473,8 +473,8 @@ def detect_anomalies(burst_df,last_burst_df,series_df) :
     day_types = ['LA','SA','FE']
     #Hour ranges to iterate over
     #hour_ranges = [[7,11], [11,15], [15,19], [19,23]]
-    hour_range = [[i,i+1] for i in range(7,23)]
-    
+    hour_ranges = [[i,i+1] for i in range(7,23)]
+
     #Detect day type and hour range from current datetime
     now = dt.now()
     #Day type

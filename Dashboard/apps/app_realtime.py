@@ -957,7 +957,7 @@ def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
 
     #Hour ranges to iterate over
     #hour_ranges = [[7,11], [11,15], [15,19], [19,23]]
-    hour_range = [[i,i+1] for i in range(7,23)]
+    hour_ranges = [[i,i+1] for i in range(7,23)]
 
     #Hour range
     for h_range in hour_ranges :
