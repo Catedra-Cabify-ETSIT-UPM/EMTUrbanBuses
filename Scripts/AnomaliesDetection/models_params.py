@@ -84,7 +84,7 @@ def train_models(df,min_points):
 
     #Locate headways of the last three weeks
     now = dt.now()
-    df = df.loc[df.datetime > (now - timedelta(days=21))]
+    #df = df.loc[df.datetime > (now - timedelta(days=21))]
 
     #Lines to iterate over
     lines = ['1','44','82','132','133']
