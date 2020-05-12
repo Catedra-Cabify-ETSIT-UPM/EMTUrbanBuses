@@ -91,7 +91,8 @@ def train_models(df,min_points):
     #Day types to iterate over
     day_types = ['LA','SA','FE']
     #Hour ranges to iterate over
-    hour_ranges = [[7,11], [11,15], [15,19], [19,23]]
+    #hour_ranges = [[7,11], [11,15], [15,19], [19,23]]
+    hour_range = [[i,i+1] for i in range(7,23)]
 
     #Train a model for each interval
     for line in lines :
