@@ -110,7 +110,7 @@ def process_hour_df(line_df,hour) :
                             if api_estim.shape[0] > 1 :
                                 estim_act = api_estim.loc[api_estim.stop==first_stop.stop].estimateArrive
                                 estim_next = api_estim.loc[api_estim.stop==second_stop.stop].estimateArrive
-                                if (estim_act.shape[0] > 0) & (estim_next.shape[0] > 0) and (time_between_stops < 1800) and (time_between_stops > 0) :
+                                if (estim_act.shape[0] > 0) & (estim_next.shape[0] > 0) and (time_between_stops < 600) and (time_between_stops > 0) :
                                     row['trip_time'] = round(time_between_stops,3)
                                     row['api_trip_time'] = estim_next.iloc[0]-estim_act.iloc[0]
                                     rows_list.append(row)

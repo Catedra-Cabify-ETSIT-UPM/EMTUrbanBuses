@@ -91,8 +91,9 @@ def clean_data(df) :
 
 
 #For every burst of data:
-def process_headways(int_df) :
+def process_headways(int_df,day_type,hour_range) :
     rows_list = []
+    hour_range = [int(hour) for hour in hour_range.split('-')]
     #Burst time
     actual_time = int_df.iloc[0].datetime
 
@@ -107,10 +108,9 @@ def process_headways(int_df) :
     dest2,dest1 = lines_collected_dict[line]['destinations']
 
     #Process mean times between stops
-    tims_bt_stops = times_bt_stops.loc[(times_bt_stops.line == line) & \
-                                        (times_bt_stops.date.dt.weekday == actual_time.weekday()) & \
-                                        (times_bt_stops.st_hour >= actual_time.hour) & \
-                                        (times_bt_stops.st_hour <= actual_time.hour + 3)]
+    tims_bt_stops = times_bt_stops.loc[(times_bt_stops.date.dt.weekday.isin(day_type_dict[day_type])) & \
+                                        (times_bt_stops.st_hour >= hour_range[0]) & \
+                                        (times_bt_stops.st_hour < hour_range[1])]
     #Group and get the mean values
     tims_bt_stops = tims_bt_stops.groupby(['line','direction','stopA','stopB']).mean()
     tims_bt_stops = tims_bt_stops.reset_index()[['line','direction','stopA','stopB','trip_time','api_trip_time']]
@@ -288,7 +288,7 @@ def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df) :
         line_df = burst_df.loc[burst_df.line == line]
 
         #Calculate headways and append them
-        headways = process_headways(line_df)
+        headways = process_headways(line_df,day_type,hour_range)
         headways['line'] = line
         headways_dfs.append(headways)
         
@@ -535,6 +535,11 @@ def main():
         #Parse the dates
         series_df['datetime'] = pd.to_datetime(series_df['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
         series_df = series_df[['line','datetime','dim','m_dist','anom','anom_size'] + bus_names_all + hw_names_all]
+
+        if (dt.now() - series_df.iloc[-1].datetime).total_seconds() > 600 :
+            #Initialize dataframes
+            series_df = pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom','anom_size'] + bus_names_all + hw_names_all)
+    
     except:
         #Initialize dataframes
         series_df = pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom','anom_size'] + bus_names_all + hw_names_all)
@@ -575,10 +580,10 @@ def main():
             time.sleep(10)
             continue
         
-        try :
-            result = detect_anomalies(burst_df,last_burst_df,series_df)
-        except :
-            result = None
+        #try :
+        result = detect_anomalies(burst_df,last_burst_df,series_df)
+        #except :
+            #result = None
         
         #If the data was updated write files
         if result :

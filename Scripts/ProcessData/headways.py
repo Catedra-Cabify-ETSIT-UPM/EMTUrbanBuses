@@ -30,6 +30,15 @@ times_bt_stops = pd.read_csv('../../Data/Processed/times_bt_stops.csv',
 #Parse the dates
 times_bt_stops['date'] = pd.to_datetime(times_bt_stops['date'], format='%Y-%m-%d')
 
+#Day types
+day_type_dict = { #0 = Monday, 1 = Tuesday ...
+    'LA' : [0,1,2,3,4], #LABORABLES
+    'LJ' : [0,1,2,3], #LUNES A JUEVES
+    'VV' : [4], #VIERNES
+    'SA' : [5], #SABADOS
+    'FE' : [6], #DOMIGOS O FESTIVOS
+}
+
 #FUNCTIONS
 def process_day_df(line_df,date) :
     '''
@@ -48,12 +57,26 @@ def process_day_df(line_df,date) :
     #Line id
     line = day_df.iloc[0].line
 
+    now = day_df.datetime.iloc[0]
+    #Day type
+    if (now.weekday() >= 0) and (now.weekday() <= 4) :
+        day_type = 'LA'
+    elif now.weekday() == 5 :
+        day_type = 'SA'
+    else :
+        day_type = 'FE'
+
+
     #Stops of each line reversed
     stops1 = lines_collected_dict[line]['1']['stops'][-2::-1]
     stops2 = lines_collected_dict[line]['2']['stops'][-2::-1]
 
     #Assign destination values
     dest2,dest1 = lines_collected_dict[line]['destinations']
+
+    #Appearance order buses list
+    ap_order_dir1,ap_order_dir2 = [],[]
+
     rows_list = []
     if day_df.shape[0] > 0 :
         #First interval for the iteration :
@@ -66,13 +89,13 @@ def process_day_df(line_df,date) :
         while True :
             int_df = day_df.loc[(day_df.datetime > start_interval) & (day_df.datetime < end_interval)]
 
-            if actual_date.hour > (last_hour + 3) :
-                #Process mean times between stops
+            if actual_date.hour > last_hour :
                 last_hour = actual_date.hour
+                #Process mean times between stops
                 tims_bt_stops = times_bt_stops.loc[(times_bt_stops.line == line) & \
-                                                    (times_bt_stops.date.dt.weekday == date.weekday()) & \
+                                                    (times_bt_stops.date.dt.weekday.isin(day_type_dict[day_type])) & \
                                                     (times_bt_stops.st_hour >= last_hour) & \
-                                                    (times_bt_stops.st_hour <= last_hour + 3)]
+                                                    (times_bt_stops.st_hour < last_hour+1)]
                 #Group and get the mean values
                 tims_bt_stops = tims_bt_stops.groupby(['line','direction','stopA','stopB']).mean()
                 tims_bt_stops = tims_bt_stops.reset_index()[['line','direction','stopA','stopB','trip_time','api_trip_time']]
@@ -134,10 +157,53 @@ def process_day_df(line_df,date) :
 
                     #Group by bus and destination
                     stops_df = stops_df.groupby(['bus','destination']).mean().sort_values(by=['estimateArrive'])
-                    stops_df = stops_df.reset_index().drop_duplicates('bus',keep='first').sort_values(by=['destination'])
+                    stops_df = stops_df.reset_index().drop_duplicates('bus',keep='first')
                     #Loc buses not given by first stop
                     stops_df = stops_df.loc[((stops_df.destination == dest1) & (~stops_df.bus.isin(buses_out1))) | \
                                             ((stops_df.destination == dest2) & (~stops_df.bus.isin(buses_out2))) ]
+
+                    #Update appearance order lists
+                    stops_df_dest1 = stops_df[stops_df.destination == dest1]
+                    if stops_df_dest1.shape[0] > 0 :  
+                        buses_dest1 = stops_df_dest1.bus.tolist()
+                        for i in range(len(buses_dest1)):
+                            if (buses_dest1[i] not in ap_order_dir1) : 
+                                #Append to apearance list
+                                ap_order_dir1.append(buses_dest1[i])
+                            elif (buses_dest1[i] == buses_dest1[-1]) & (buses_dest1[i] != ap_order_dir1[-1]):
+                                for k in range(len(ap_order_dir1)) :
+                                    if buses_dest1[i] == ap_order_dir1[k] :
+                                        #Put it in the last position
+                                        ap_order_dir1.append(ap_order_dir1.pop(k))
+                                        break
+                    
+                    stops_df_dest2 = stops_df[stops_df.destination == dest2]
+                    if stops_df_dest2.shape[0] > 0 :  
+                        buses_dest2 = stops_df_dest2.bus.tolist()
+                        for i in range(len(buses_dest2)):
+                            if (buses_dest2[i] not in ap_order_dir2) : 
+                                #Append to apearance list
+                                ap_order_dir2.append(buses_dest2[i])
+                            elif (buses_dest2[i] == buses_dest2[-1]) & (buses_dest2[i] != ap_order_dir2[-1]):
+                                for k in range(len(ap_order_dir2)) :
+                                    if buses_dest2[i] == ap_order_dir2[k] :
+                                        #Put it in the last position
+                                        ap_order_dir2.append(ap_order_dir2.pop(k))
+                                        break
+
+
+                    #Reorder df according to appearance list
+                    rows = []
+                    for bus in ap_order_dir1 :
+                        bus_df = stops_df_dest1[stops_df_dest1.bus == bus]
+                        if bus_df.shape[0] > 0 :
+                            rows.append(bus_df.iloc[0])
+                    for bus in ap_order_dir2 :
+                        bus_df = stops_df_dest2[stops_df_dest2.bus == bus]
+                        if bus_df.shape[0] > 0 :
+                            rows.append(bus_df.iloc[0])
+                    stops_df = pd.DataFrame(rows)
+                    print(stops_df)
                     #Calculate time intervals
                     if stops_df.shape[0] > 0 :
                         hw_pos1 = 0

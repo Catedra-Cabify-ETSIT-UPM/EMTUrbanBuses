@@ -145,6 +145,7 @@ def build_lines_map(stops_of_lines,stops_selected,lines_selected) :
     fig = go.Figure()
 
     #Add lines to the figure
+    Xed,Yed = [],[]
     for line_id in lines_selected.line_id.unique() :
         for direction in [1,2] :
             color = '#1E90FF' if direction == 1 else '#B22222'
@@ -383,7 +384,19 @@ def gen_graph(G):
             'showline':False,
             'zeroline':False,
             'visible':False
-        }
+        },
+        annotations=[
+            dict(
+                ax=(Xed[i][0] + Xed[i][1]) / 2,
+                ay=(Yed[i][0] + Yed[i][1]) / 2, axref='x', ayref='y',
+                x=(Xed[i][0] * 3 + Xed[i][1]) / 4,
+                y=(Yed[i][0] * 3 + Yed[i][1]) / 4, xref='x', yref='y',
+                showarrow=True,
+                arrowhead=4,
+                arrowsize=1+(Wed[i]/max_weight)*2,
+                arrowwidth=1,
+                opacity=1
+            ) for i in range(len(Xed))]
     )
 
     data=line_traces + [trace4]

@@ -4,6 +4,10 @@ import numpy as np
 from datetime import datetime as dt
 from datetime import timedelta
 
+from joblib import Parallel, delayed
+import multiprocessing
+num_cores = multiprocessing.cpu_count()
+
 import json
 
 #Day types
@@ -79,6 +83,50 @@ def get_model_params(df,dim) :
     return cov_matrix,mean
 
 
+def calc_line_params(df,line,day_types,hour_ranges,min_points) :
+    models_params_dict = {}
+    models_params_dict[line] = {}
+    for day_type in day_types :
+        models_params_dict[line][day_type] = {}
+        for hour_range in hour_ranges:
+            models_params_dict[line][day_type][str(hour_range[0])+'-'+str(hour_range[1])] = {}
+
+            #Get data split
+            split_df = df.loc[
+                (df.line == line) & \
+                (df.datetime.dt.weekday.isin(day_type_dict[day_type])) & \
+                (df.datetime.dt.hour >= hour_range[0]) & \
+                (df.datetime.dt.hour < hour_range[1])
+            ]
+
+            #Generate ndimensional windows dataframes
+            window_data_points = min_points + 1
+            dim = 1
+            windows_dfs = []
+            while window_data_points > min_points :
+                window_df = get_ndim_hws(split_df,dim)
+                window_data_points = window_df.shape[0]
+                dim += 1
+
+                if window_data_points > min_points :
+                        windows_dfs.append(window_df)
+
+            #Max dimension for which we are going to train a model
+            max_dim = len(windows_dfs)
+            models_params_dict[line][day_type][str(hour_range[0])+'-'+str(hour_range[1])]['max_dim'] = max_dim
+
+            #For every window data
+            for dim in range(1,max_dim+1) :
+                models_params_dict[line][day_type][str(hour_range[0])+'-'+str(hour_range[1])][dim] = {}
+
+                #Calculate cov_matrix and mean and add it to the dictionary
+                cov_matrix,mean = get_model_params(windows_dfs[dim-1],dim)
+
+                models_params_dict[line][day_type][str(hour_range[0])+'-'+str(hour_range[1])][dim]['cov_matrix'] = cov_matrix.tolist()
+                models_params_dict[line][day_type][str(hour_range[0])+'-'+str(hour_range[1])][dim]['mean'] = mean
+    return models_params_dict
+
+
 def train_models(df,min_points):
     models_params_dict = {}
 
@@ -94,48 +142,12 @@ def train_models(df,min_points):
     #hour_ranges = [[7,11], [11,15], [15,19], [19,23]]
     hour_ranges = [[i,i+1] for i in range(7,23)]
 
-    #Train a model for each interval
-    for line in lines :
-        models_params_dict[line] = {}
-        for day_type in day_types :
-            models_params_dict[line][day_type] = {}
-            for hour_range in hour_ranges:
-                models_params_dict[line][day_type][str(hour_range[0])+'-'+str(hour_range[1])] = {}
-
-                #Get data split
-                split_df = df.loc[
-                    (df.line == line) & \
-                    (df.datetime.dt.weekday.isin(day_type_dict[day_type])) & \
-                    (df.datetime.dt.hour >= hour_range[0]) & \
-                    (df.datetime.dt.hour < hour_range[1])
-                ]
-
-                #Generate ndimensional windows dataframes
-                window_data_points = min_points + 1
-                dim = 1
-                windows_dfs = []
-                while window_data_points > min_points :
-                    window_df = get_ndim_hws(split_df,dim)
-                    window_data_points = window_df.shape[0]
-                    dim += 1
-
-                    if window_data_points > min_points :
-                         windows_dfs.append(window_df)
-
-                #Max dimension for which we are going to train a model
-                max_dim = len(windows_dfs)
-                models_params_dict[line][day_type][str(hour_range[0])+'-'+str(hour_range[1])]['max_dim'] = max_dim
-
-                #For every window data
-                for dim in range(1,max_dim+1) :
-                    models_params_dict[line][day_type][str(hour_range[0])+'-'+str(hour_range[1])][dim] = {}
-
-                    #Calculate cov_matrix and mean and add it to the dictionary
-                    cov_matrix,mean = get_model_params(windows_dfs[dim-1],dim)
-
-                    models_params_dict[line][day_type][str(hour_range[0])+'-'+str(hour_range[1])][dim]['cov_matrix'] = cov_matrix.tolist()
-                    models_params_dict[line][day_type][str(hour_range[0])+'-'+str(hour_range[1])][dim]['mean'] = mean
-
+    #Train a model for each interval in parallel
+    models_params_dict = {}
+    line_dicts = Parallel(n_jobs=num_cores,max_nbytes=None)(delayed(calc_line_params)(df,line,day_types,hour_ranges,min_points) for line in lines)
+    for line_dict in line_dicts :
+        models_params_dict.update(line_dict)
+    
     return models_params_dict
 
 

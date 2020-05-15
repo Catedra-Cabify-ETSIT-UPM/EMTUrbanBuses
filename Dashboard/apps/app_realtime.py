@@ -488,7 +488,6 @@ def build_time_series_graph(series_df,model,conf) :
     std = model['cov_matrix']
     mean = model['mean']
     m_th = math.sqrt(chi2.ppf(conf, df=dim))
-    
     #Add thresholds
     thresholds = [(mean-std*m_th),(mean+std*m_th)]
     for th in thresholds :
