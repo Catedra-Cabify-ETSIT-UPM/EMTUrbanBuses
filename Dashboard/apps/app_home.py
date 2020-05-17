@@ -327,7 +327,7 @@ def gen_graph(G):
     for i in range(len(Wed)) :
         Xed_orig,Yed_orig = Xed[i],Yed[i]
         Xed_new,Yed_new = [],[]
-        N = 100
+        N = 10
         for k in range(N+1):
             Xed_new.append(Xed_orig[0]+(Xed_orig[1]-Xed_orig[0])*k/N)
             Yed_new.append(Yed_orig[0]+(Yed_orig[1]-Yed_orig[0])*k/N)
@@ -389,8 +389,8 @@ def gen_graph(G):
             dict(
                 ax=(Xed[i][0] + Xed[i][1]) / 2,
                 ay=(Yed[i][0] + Yed[i][1]) / 2, axref='x', ayref='y',
-                x=(Xed[i][0] * 3 + Xed[i][1]) / 4,
-                y=(Yed[i][0] * 3 + Yed[i][1]) / 4, xref='x', yref='y',
+                x=(Xed[i][1] * 3 + Xed[i][0]) / 4,
+                y=(Yed[i][1] * 3 + Yed[i][0]) / 4, xref='x', yref='y',
                 showarrow=True,
                 arrowhead=4,
                 arrowsize=1+(Wed[i]/max_weight)*2,

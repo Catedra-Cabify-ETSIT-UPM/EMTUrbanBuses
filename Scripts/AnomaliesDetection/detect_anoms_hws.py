@@ -18,6 +18,14 @@ import time
 
 from sys import argv
 
+#Lines to iterate over
+lines = ['1','44','82','132','133']
+#Day types to iterate over
+day_types = ['LA','SA','FE']
+#Hour ranges to iterate over
+#hour_ranges = [[7,11], [11,15], [15,19], [19,23]]
+hour_ranges = [[i,i+1] for i in range(7,23)]
+
 
 #Lines collected dictionary
 with open('../../Data/Static/lines_collected_dict.json', 'r') as f:
@@ -91,7 +99,7 @@ def clean_data(df) :
 
 
 #For every burst of data:
-def process_headways(int_df,day_type,hour_range) :
+def process_headways(int_df,day_type,hour_range,ap_order_dict) :
     rows_list = []
     hour_range = [int(hour) for hour in hour_range.split('-')]
     #Burst time
@@ -103,6 +111,14 @@ def process_headways(int_df,day_type,hour_range) :
     #Stops of each line reversed
     stops1 = lines_collected_dict[line]['1']['stops'][-2::-1]
     stops2 = lines_collected_dict[line]['2']['stops'][-2::-1]
+
+    #Appearance order buses list
+    ap_order_dir1 = ap_order_dict[line]['dir1']
+    ap_order_dir2 = ap_order_dict[line]['dir2']
+    last_bus_ap1 = ap_order_dict[line]['l_b_ap1']
+    last_bus_ap2 = ap_order_dict[line]['l_b_ap2']
+    bus_cons_ap1 = ap_order_dict[line]['cons_ap1']
+    bus_cons_ap2 = ap_order_dict[line]['cons_ap2']
 
     #Assign destination values
     dest2,dest1 = lines_collected_dict[line]['destinations']
@@ -170,10 +186,86 @@ def process_headways(int_df,day_type,hour_range) :
 
     #Group by bus and destination
     stops_df = stops_df.groupby(['bus','destination']).mean().sort_values(by=['estimateArrive'])
-    stops_df = stops_df.reset_index().drop_duplicates('bus',keep='first').sort_values(by=['destination'])
+    stops_df = stops_df.reset_index().drop_duplicates('bus',keep='first')
     #Loc buses not given by first stop
     stops_df = stops_df.loc[((stops_df.destination == dest1) & (~stops_df.bus.isin(buses_out1))) | \
                             ((stops_df.destination == dest2) & (~stops_df.bus.isin(buses_out2))) ]
+
+    #Update appearance order lists
+    stops_df_dest1 = stops_df[stops_df.destination == dest1].sort_values(by=['estimateArrive'])
+    if stops_df_dest1.shape[0] > 0 :  
+        buses_dest1 = stops_df_dest1.bus.tolist()
+        for i in range(len(buses_dest1)):
+            if buses_dest1[i] not in bus_cons_ap1.keys() :
+                bus_cons_ap1[buses_dest1[i]] = 0
+
+            if bus_cons_ap1[buses_dest1[i]] > 3 :
+                if (buses_dest1[i] not in ap_order_dir1) : 
+                    #Append to apearance list
+                    ap_order_dir1.append(buses_dest1[i])
+                    bus_cons_ap1[buses_dest1[i]] = 0
+                elif last_bus_ap1[buses_dest1[i]] > 10 :
+                    for k in range(len(ap_order_dir1)) :
+                        if buses_dest1[i] == ap_order_dir1[k] :
+                            #Put it in the last position
+                            ap_order_dir1.append(ap_order_dir1.pop(k))
+                            bus_cons_ap1[buses_dest1[i]] = 0
+                            break
+            
+                last_bus_ap1[buses_dest1[i]] = 0
+            bus_cons_ap1[buses_dest1[i]] += 1
+        #Update times without appering
+        for bus in last_bus_ap1.keys():
+            if bus not in buses_dest1 :
+                last_bus_ap1[bus] += 1
+
+    
+    stops_df_dest2 = stops_df[stops_df.destination == dest2].sort_values(by=['estimateArrive'])
+    if stops_df_dest2.shape[0] > 0 :  
+        buses_dest2 = stops_df_dest2.bus.tolist()
+        for i in range(len(buses_dest2)):
+            if buses_dest2[i] not in bus_cons_ap2.keys() :
+                bus_cons_ap2[buses_dest2[i]] = 0
+
+            if bus_cons_ap2[buses_dest2[i]] > 3 :
+                if (buses_dest2[i] not in ap_order_dir2) : 
+                    #Append to apearance list
+                    ap_order_dir2.append(buses_dest2[i])
+                    bus_cons_ap2[buses_dest2[i]] = 0
+                elif last_bus_ap2[buses_dest2[i]] > 4 :
+                    for k in range(len(ap_order_dir2)) :
+                        if buses_dest2[i] == ap_order_dir2[k] :
+                            #Put it in the last position
+                            ap_order_dir2.append(ap_order_dir2.pop(k))
+                            bus_cons_ap2[buses_dest2[i]] = 0
+                            break
+                last_bus_ap2[buses_dest2[i]] = 0
+            bus_cons_ap2[buses_dest2[i]] += 1
+
+        #Update times without appering
+        for bus in last_bus_ap2.keys():
+            if bus not in buses_dest2 :
+                last_bus_ap2[bus] += 1
+
+    #Update in dict
+    ap_order_dict[line]['dir1'] = ap_order_dir1
+    ap_order_dict[line]['dir2'] = ap_order_dir2
+    ap_order_dict[line]['l_b_ap1'] = last_bus_ap1
+    ap_order_dict[line]['l_b_ap2'] = last_bus_ap2
+    ap_order_dict[line]['cons_ap1'] = bus_cons_ap1
+    ap_order_dict[line]['cons_ap2'] = bus_cons_ap2
+
+    #Reorder df according to appearance list
+    rows = []
+    for bus in ap_order_dir1 :
+        bus_df = stops_df_dest1[stops_df_dest1.bus == bus]
+        if bus_df.shape[0] > 0 :
+            rows.append(bus_df.iloc[0])
+    for bus in ap_order_dir2 :
+        bus_df = stops_df_dest2[stops_df_dest2.bus == bus]
+        if bus_df.shape[0] > 0 :
+            rows.append(bus_df.iloc[0])
+    stops_df = pd.DataFrame(rows)
 
     #Calculate time intervals
     if stops_df.shape[0] > 0 :
@@ -232,8 +324,12 @@ def process_headways(int_df,day_type,hour_range) :
                 else :
                     hw_pos2 += 1
 
-    return pd.DataFrame(rows_list)
+    if len(rows_list) < 1 :
+        headways_df = pd.DataFrame(columns=['datetime', 'line', 'direction', 'busA', 'busB', 'hw_pos', 'headway', 'busB_ttls'])
+    else :
+        headways_df = pd.DataFrame(rows_list)
 
+    return headways_df,ap_order_dict
 
 def get_ndim_hws (df,dim) :
     #Generate names for the columns of the dataframe to be built
@@ -273,12 +369,17 @@ def get_ndim_hws (df,dim) :
     return pd.DataFrame(columns)
 
 
-def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df) :
+def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df,ap_order_dict) :
     windows_dfs,headways_dfs = [],[]
     
     #Read dict
-    with open('../../Data/Anomalies/hyperparams.json', 'r') as f:
-        hyperparams = json.load(f)
+    while True :
+        try :
+            with open('../../Data/Anomalies/hyperparams.json', 'r') as f:
+                hyperparams = json.load(f)
+            break
+        except : 
+            continue
 
     #For every line
     for line in lines :
@@ -288,7 +389,7 @@ def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df) :
         line_df = burst_df.loc[burst_df.line == line]
 
         #Calculate headways and append them
-        headways = process_headways(line_df,day_type,hour_range)
+        headways,ap_order_dict = process_headways(line_df,day_type,hour_range,ap_order_dict)
         headways['line'] = line
         headways_dfs.append(headways)
         
@@ -350,7 +451,7 @@ def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df) :
                 for name in hw_names_rest + bus_names_rest :
                     window_df[name] = 0
 
-                window_df = window_df[['line','datetime','dim','m_dist','anom'] + bus_names + bus_names_rest + hw_names + hw_names_rest]
+                window_df = window_df[['line','datetime','dim','m_dist','anom'] + bus_names_all + hw_names_all]
                 windows_dfs.append(window_df)
 
             #Increase dim
@@ -362,9 +463,9 @@ def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df) :
     if len(windows_dfs) > 0 :
         windows_df = pd.concat(windows_dfs)
     else :
-        windows_df = pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom'] + bus_names + bus_names_rest + hw_names + hw_names_rest)
+        windows_df = pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom'] + bus_names_all + hw_names_all)
 
-    return headways_df,windows_df
+    return headways_df,windows_df,ap_order_dict
 
 
 def build_series_anoms(series_df,windows_df) :
@@ -415,7 +516,10 @@ def build_series_anoms(series_df,windows_df) :
             new_series.append(group_now)
 
     #Build current series dataframe and append it to the past series
-    new_series_df = pd.DataFrame(new_series)[['line','datetime','dim','m_dist','anom','anom_size'] + bus_names_all + hw_names_all]
+    if len(new_series) > 0 :
+        new_series_df = pd.DataFrame(new_series)[['line','datetime','dim','m_dist','anom','anom_size'] + bus_names_all + hw_names_all]
+    else : 
+        new_series_df = pd.DataFrame(columns=['line','datetime','dim','m_dist','anom','anom_size'] + bus_names_all + hw_names_all)
 
     series_df = series_df.append(new_series_df, ignore_index=True)
 
@@ -457,23 +561,20 @@ def clean_series(series_df,anomalies_dfs,now) :
     return series_df,anomalies_dfs
 
 
-def detect_anomalies(burst_df,last_burst_df,series_df) :
+def detect_anomalies(burst_df,last_burst_df,series_df,ap_order_dict) :
     #Read dict
-    with open('../../Data/Anomalies/hyperparams.json', 'r') as f:
-        hyperparams = json.load(f)
+    while True :
+        try :
+            with open('../../Data/Anomalies/hyperparams.json', 'r') as f:
+                hyperparams = json.load(f)
+            break
+        except: 
+            continue
 
     #Check if the burst dataframe has changed
     if last_burst_df.equals(burst_df) :
         #If it hasnt changed we return None
         return None
-
-    #Lines to iterate over
-    lines = ['1','44','82','132','133']
-    #Day types to iterate over
-    day_types = ['LA','SA','FE']
-    #Hour ranges to iterate over
-    #hour_ranges = [[7,11], [11,15], [15,19], [19,23]]
-    hour_ranges = [[i,i+1] for i in range(7,23)]
 
     #Detect day type and hour range from current datetime
     now = dt.now()
@@ -491,10 +592,10 @@ def detect_anomalies(burst_df,last_burst_df,series_df) :
             break
         elif (h_range == hour_ranges[-1]) :
             print('\nHour range for {}:{} not defined. Waiting till 7am.\n'.format(now.hour,now.minute))
-            return 'Wait'
+            return 'Waiting'
 
     #Process headways and build dimensional dataframes
-    headways_df,windows_df = process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df)
+    headways_df,windows_df,ap_order_dict = process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df,ap_order_dict)
 
     #Check for anomalies and update the time series
     series_df,anomalies_dfs = build_series_anoms(series_df,windows_df)
@@ -521,7 +622,7 @@ def detect_anomalies(burst_df,last_burst_df,series_df) :
     except :
         anomalies_df = pd.DataFrame()
 
-    return headways_df,series_df,anomalies_df
+    return headways_df,series_df,anomalies_df,ap_order_dict
 
 
 def main():
@@ -543,7 +644,19 @@ def main():
     except:
         #Initialize dataframes
         series_df = pd.DataFrame(columns = ['line','datetime','dim','m_dist','anom','anom_size'] + bus_names_all + hw_names_all)
-    
+
+    #Create dict
+    ap_order_dict = {}
+    for line in lines :
+        ap_order_dict[line] = {
+            'dir1': [],
+            'dir2': [],
+            'l_b_ap1': {},
+            'l_b_ap2': {},
+            'cons_ap1': {},
+            'cons_ap2': {}
+        }
+
     last_burst_df = pd.DataFrame(columns = ['line','destination','stop','bus','datetime','estimateArrive','DistanceBus'])
 
     #Inform of the selected parameters
@@ -581,14 +694,14 @@ def main():
             continue
         
         #try :
-        result = detect_anomalies(burst_df,last_burst_df,series_df)
+        result = detect_anomalies(burst_df,last_burst_df,series_df,ap_order_dict)
         #except :
             #result = None
         
         #If the data was updated write files
         if result :
-            if len(result) == 3 :
-                headways_df,series_df,anomalies_df = result
+            if (len(result) == 4) :
+                headways_df,series_df,anomalies_df,ap_order_dict = result
 
                 #print(headways_df.head(2))
                 #print(series_df.head(2))
@@ -607,6 +720,7 @@ def main():
                         anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=False)
                     else :
                         anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=True)
+
 
                 print('\n----- Burst headways and series were processed. Anomalies detected were added - {} -----\n'.format(dt.now()))
         

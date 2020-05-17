@@ -159,7 +159,7 @@ def read_df(name) :
                 'direction': 'uint16',
                 'busA': 'uint16',
                 'busB': 'uint16',
-                'headway':'uint16',
+                'headway':'int16',
                 'busB_ttls':'uint16'
             }
         )[['line','direction','datetime','hw_pos','busA','busB','headway','busB_ttls']]
@@ -383,7 +383,7 @@ def build_graph(line_hws) :
         max_dist1 = hw1.busB_ttls.max()
         #Add trace
         for i in range(hw1.shape[0]-1):
-            N,X = 10,[hw1.iloc[i].busB_ttls,hw1.iloc[i+1].busB_ttls]
+            N,X = 10,[hw1.iloc[i].busB_ttls,hw1.iloc[i].busB_ttls + hw1.iloc[i+1].headway]
             X_new = []
             for k in range(N+1):
                 X_new.append(X[0]+(X[1]-X[0])*k/N)
@@ -405,7 +405,7 @@ def build_graph(line_hws) :
         max_dist2 = hw2.busB_ttls.max()
         #Add trace
         for i in range(hw2.shape[0]-1):
-            N,X = 10,[hw2.iloc[i].busB_ttls,hw2.iloc[i+1].busB_ttls]
+            N,X = 10,[hw2.iloc[i].busB_ttls,hw2.iloc[i].busB_ttls + hw2.iloc[i+1].headway]
             X_new = []
             for k in range(N+1):
                 X_new.append(X[0]+(X[1]-X[0])*k/N)
@@ -458,7 +458,8 @@ def build_time_series_graph(series_df,model,conf) :
         title='<b>1D HEADWAYS TIME SERIES</b> - (In seconds)',
         legend_title='<b>Group ids</b>',
         yaxis = dict(
-            nticks=20
+            nticks=20,
+            range=(series_df.hw12.min()-50,series_df.hw12.max()+50)
         ),
         legend = dict(
             x=-0.1,
@@ -491,9 +492,6 @@ def build_time_series_graph(series_df,model,conf) :
     #Add thresholds
     thresholds = [(mean-std*m_th),(mean+std*m_th)]
     for th in thresholds :
-        if th<0 :
-            th = 0
-        
         graph.add_shape(
             name=str(th),
             type='line',
@@ -637,7 +635,7 @@ def build_m_dist_graph(series_df,line) :
             x=group_df.datetime,
             y=group_df.m_dist,
             mode='lines+markers',
-            line=dict(width=1.5, color=color)
+            line=dict(width=3, color=color)
         ))
 
     return graph
@@ -718,12 +716,15 @@ def new_interval(n_intervals,n_clicks) :
 # CALLBACK 0a - Title and sliders
 @app.callback(
     [Output('tab-title','children'),Output('conf','children'),Output('size-th','children')],
-    [Input('interval-component','n_intervals'),
+    [Input('interval-component','n_intervals'),Input('update-button','n_clicks'),
     Input('url', 'pathname')]
 )
-def update_title_sliders(n_intervals,pathname) :
+def update_title_sliders(n_intervals,n_clicks,pathname) :
     line = pathname[10:]
     
+    now = dt.now()
+    now = now.replace(microsecond=0)
+
     with open('../Data/Anomalies/hyperparams.json', 'r') as f:
         hyperparams = json.load(f)
     
@@ -732,7 +733,7 @@ def update_title_sliders(n_intervals,pathname) :
 
     #And return all of them
     return [
-        [html.H1('Line {} Real-Time Monitoring'.format(line), className='title is-3')],
+        [html.H1('Line {} Real-Time Monitoring - {}'.format(line,now.time()), className='title is-3')],
         [
             html.Label(
                 [
@@ -875,11 +876,6 @@ def update_flat_hws(n_intervals,n_clicks,pathname) :
 
     line_hws = hws_burst.loc[hws_burst.line == line]
 
-    if line_hws.shape[0] < 1 :
-        return [
-            html.H1('No buses were found inside the line.',className ='title is-5')
-        ]
-
     #Create graph
     flat_hws_graph = build_graph(line_hws)
 
@@ -964,8 +960,7 @@ def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
             hour_range = str(h_range[0]) + '-' + str(h_range[1])
             break
         elif (h_range == hour_ranges[-1]) :
-            print('\nHour range for {}:{} not defined. Waiting till 7am.\n'.format(now.hour,now.minute))
-            return 'Wait'
+            return [html.H1('Hour range for {}:{} not defined. Waiting till 7am'.format(now.hour,now.minute),className='subtitle is-3')]
     
     model = models_params_dict[line][day_type][hour_range]['1']
 
@@ -1066,7 +1061,7 @@ def update_anomalies_table(n_intervals,n_clicks,pathname) :
     #And return all of them
     return [
         html.Div(className = 'box', style=dict(height='39vh'), children = [
-            html.H2('Detected anomalies',className = 'subtitle is-5'),
+            html.H2('DETECTED ANOMALIES',className = 'title is-5'),
             anoms_table
         ])
     ]
