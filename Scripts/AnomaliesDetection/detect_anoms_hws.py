@@ -109,8 +109,8 @@ def process_headways(int_df,day_type,hour_range,ap_order_dict) :
     line = int_df.iloc[0].line
 
     #Stops of each line reversed
-    stops1 = lines_collected_dict[line]['1']['stops'][-2::-1]
-    stops2 = lines_collected_dict[line]['2']['stops'][-2::-1]
+    stops1 = lines_collected_dict[line]['1']['stops'][-2::-1][0:-2]
+    stops2 = lines_collected_dict[line]['2']['stops'][-2::-1][0:-2]
 
     #Appearance order buses list
     ap_order_dir1 = ap_order_dict[line]['dir1']
@@ -124,7 +124,8 @@ def process_headways(int_df,day_type,hour_range,ap_order_dict) :
     dest2,dest1 = lines_collected_dict[line]['destinations']
 
     #Process mean times between stops
-    tims_bt_stops = times_bt_stops.loc[(times_bt_stops.date.dt.weekday.isin(day_type_dict[day_type])) & \
+    tims_bt_stops = times_bt_stops.loc[(times_bt_stops.line == line) & \
+                                        (times_bt_stops.date.dt.weekday.isin(day_type_dict[day_type])) & \
                                         (times_bt_stops.st_hour >= hour_range[0]) & \
                                         (times_bt_stops.st_hour < hour_range[1])]
     #Group and get the mean values
@@ -162,16 +163,8 @@ def process_headways(int_df,day_type,hour_range,ap_order_dict) :
                 buses_out1 += stop_df.bus.unique().tolist()
             else :
                 buses_out2 += stop_df.bus.unique().tolist()
-        elif (stop == stops1[-2]) or (stop == stops2[-2]) :
-            stop_dist = int(lines_collected_dict[line][str(direction)]['distances'][stop])
-            buses_near = stop_df.loc[stop_df.DistanceBus > stop_dist/2]
-            if buses_near.shape[0] > 0 :
-                if direction == 1 :
-                    buses_out1 += buses_near.bus.unique().tolist()
-                else :
-                    buses_out2 += buses_near.bus.unique().tolist()
         elif (stop == stops1[0]) or (stop == stops2[0]) :
-            buses_near = stop_df.loc[stop_df.estimateArrive < 20]
+            buses_near = stop_df.loc[stop_df.DistanceBus < 200]
             if buses_near.shape[0] > 0 :
                 if direction == 1 :
                     buses_out1 += buses_near.bus.unique().tolist()
@@ -205,17 +198,13 @@ def process_headways(int_df,day_type,hour_range,ap_order_dict) :
                 if (buses_dest1[i] not in ap_order_dir1) : 
                     #Append to apearance list
                     ap_order_dir1.append(buses_dest1[i])
-                    bus_cons_ap1[buses_dest1[i]] = 0
+
                 elif last_bus_ap1[buses_dest1[i]] > 1 :
                     for k in range(len(ap_order_dir1)) :
                         if buses_dest1[i] == ap_order_dir1[k] :
                             #Put it in the last position
                             ap_order_dir1.append(ap_order_dir1.pop(k))
-                            bus_cons_ap1[buses_dest1[i]] = 0
                             break
-                last_bus_ap1[buses_dest1[i]] = 0
-               
-            bus_cons_ap1[buses_dest1[i]] += 1
 
         #Update times without appering
         for bus in last_bus_ap1.keys():
@@ -225,6 +214,9 @@ def process_headways(int_df,day_type,hour_range,ap_order_dict) :
                 if last_bus_ap1[bus] > 1 :
                     if bus in ap_order_dir1 :
                         ap_order_dir1.remove(bus)
+            else :
+                last_bus_ap1[bus] = 0
+                bus_cons_ap1[bus] += 1
     
     stops_df_dest2 = stops_df[stops_df.destination == dest2].sort_values(by=['estimateArrive'])
     if stops_df_dest2.shape[0] > 0 :  
@@ -239,17 +231,13 @@ def process_headways(int_df,day_type,hour_range,ap_order_dict) :
                 if (buses_dest2[i] not in ap_order_dir2) : 
                     #Append to apearance list
                     ap_order_dir2.append(buses_dest2[i])
-                    bus_cons_ap2[buses_dest2[i]] = 0
+
                 elif last_bus_ap2[buses_dest2[i]] > 1 :
                     for k in range(len(ap_order_dir2)) :
                         if buses_dest2[i] == ap_order_dir2[k] :
                             #Put it in the last position
                             ap_order_dir2.append(ap_order_dir2.pop(k))
-                            bus_cons_ap2[buses_dest2[i]] = 0
                             break
-                last_bus_ap2[buses_dest2[i]] = 0
-
-            bus_cons_ap2[buses_dest2[i]] += 1
 
         #Update times without appering
         for bus in last_bus_ap2.keys():
@@ -259,6 +247,9 @@ def process_headways(int_df,day_type,hour_range,ap_order_dict) :
                 if last_bus_ap2[bus] > 1 :
                     if bus in ap_order_dir2 :
                         ap_order_dir2.remove(bus)
+            else :
+                last_bus_ap2[bus] = 0
+                bus_cons_ap2[bus] += 1
 
     #Update in dict
     ap_order_dict[line]['dir1'] = ap_order_dir1
@@ -728,11 +719,10 @@ def main():
 
                 series_df.to_csv(f+'RealTime/series.csv')
 
-                if anomalies_df.shape[0] > 0 :
-                    if os.path.isfile(f+'Anomalies/anomalies.csv') :
-                        anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=False)
-                    else :
-                        anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=True)
+                if os.path.isfile(f+'Anomalies/anomalies.csv') :
+                    anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=False)
+                else :
+                    anomalies_df.to_csv(f+'Anomalies/anomalies.csv', mode='a', header=True)
 
 
                 print('\n----- Burst headways and series were processed. Anomalies detected were added - {} -----\n'.format(dt.now()))

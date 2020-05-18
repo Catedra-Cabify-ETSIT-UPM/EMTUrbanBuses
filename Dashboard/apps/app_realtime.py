@@ -14,6 +14,8 @@ import plotly.io as pio
 
 from datetime import datetime as dt
 
+import numpy as np
+from numpy import pi, sin, cos
 import math
 
 from scipy import stats
@@ -58,7 +60,7 @@ zooms = {
 }
 
 max_ttls = {
-    '1': 2700,
+    '1': 2800,
     '44': 2500,
     '82': 2500,
     'F': 2500,
@@ -122,6 +124,14 @@ layout = html.Div(className = '', children = [
             html.Div(id='time-series-hws-div', className='column is-4', children=[
                 dcc.Graph(
                     id = 'time-series-hws',
+                    className = 'box',
+                    style=dict(height=box_height),
+                    figure = go.Figure()
+                )
+            ]),
+            html.Div(id='2d-time-series-hws-div', className='column is-4', children=[
+                dcc.Graph(
+                    id = '2d-time-series-hws',
                     className = 'box',
                     style=dict(height=box_height),
                     figure = go.Figure()
@@ -218,6 +228,51 @@ def find_nearest_row_by_dist(df,dist_traveled) :
         nearest_row = df.iloc[0]
     return nearest_row
 
+
+def ellipse(mus, cov_matrix, conf) :
+    a = cov_matrix[0][0]
+    b = cov_matrix[0][1]
+    c = cov_matrix[1][1]
+    
+    lambda1 = (a+c)/2 + math.sqrt(((a-c)/2)**2 + b**2)
+    lambda2 = (a+c)/2 - math.sqrt(((a-c)/2)**2 + b**2)
+    
+    #Rotation angle
+    if (b == 0) and (a >= c) :
+        theta = 0
+    elif (b == 0) and (a < c) :
+        theta = math.pi/2
+    else :
+        theta = math.atan2(lambda1-a,b)
+    
+    #Eigenvectors
+    ei_vecs = [
+        [math.cos(theta),-math.sin(theta)],
+        [math.sin(theta),math.cos(theta)]
+    ]
+    
+    #Chi-Value for desired confidence
+    chi_val = chi2.ppf(conf, df=2)
+    
+    #Eigenvalues
+    r1 = math.sqrt(chi_val*lambda1)
+    r2 = math.sqrt(chi_val*lambda2)
+    ei_vals = [r1,r2]
+    
+    #CALCULATE ELLIPSE POINTS
+    N = 100
+    # x_center, y_center the coordinates of ellipse center
+    # ax1 ax2 two orthonormal vectors representing the ellipse axis directions
+    # a, b the ellipse parameters
+    t = np.linspace(0, 2*pi, N)
+    #ellipse parameterization with respect to a system of axes of directions a1, a2
+    xs = ei_vals[0] * cos(t)
+    ys = ei_vals[1] * sin(t)
+    # coordinate of the  ellipse points with respect to the system of axes [1, 0], [0,1] with origin (0,0)
+    xp, yp = np.dot(ei_vecs, [xs, ys])
+    x = xp + mus[0] 
+    y = yp + mus[1]
+    return x, y
 
 def calc_map_params(df) :
     #Select line line shapes
@@ -344,12 +399,19 @@ def build_map(line_df) :
             lon=[bus.lon],
             mode='markers',
             marker=go.scattermapbox.Marker(
-                size=25,
+                size=27,
                 opacity=1,
                 color=color
             ),
             text=[bus.bus],
             hoverinfo='text'
+        ))
+        new_map.add_trace(go.Scattermapbox(
+            mode='text',
+            text=str(bus.bus),
+            lat=[bus.lat],
+            lon=[bus.lon],
+            hoverinfo='none'
         ))
 
     #And finally we return the map
@@ -377,6 +439,7 @@ def build_graph(line_hws) :
             showgrid=False, 
             zeroline=False
         ),
+        showlegend=False,
         margin=dict(r=0, l=0, t=0, b=0),
         hovermode='closest'
     )
@@ -452,7 +515,7 @@ def build_graph(line_hws) :
             x=[bus.busB_ttls],
             y=['<b>'+dest+' '],
             marker=dict(
-                size=25,
+                size=30,
                 color=color,
                 line=dict(
                     color='black',
@@ -462,6 +525,14 @@ def build_graph(line_hws) :
             text=['<b>Bus: ' + str(bus.busB) + '</b> <br>' + str(bus.headway)+'s to next bus <br>' + str(bus.busB_ttls) + 's to last stop'],
             hoverinfo='text'
         ))
+        graph.add_trace(go.Scatter(
+            mode='text',
+            text='<b>' + str(bus.busB),
+            x=[bus.busB_ttls],
+            y=['<b>'+dest+' '],
+            hoverinfo='none'
+        ))
+    
     graph.update_layout(xaxis_range=(0,max_ttls[line]))
 
     #Finally we return the graph
@@ -478,10 +549,11 @@ def build_time_series_graph(series_df,model,conf) :
         legend_title='<b>Group ids</b>',
         yaxis = dict(
             nticks=20,
-            range=(series_df.hw12.min()-50,series_df.hw12.max()+50)
+            range=(series_df.hw12.min()-50,series_df.hw12.max()+50),
+            zerolinecolor='darkgrey'
         ),
         legend = dict(
-            x=-0.1,
+            x=-0.02,
             y=-0.05,
             orientation='h'
         ),
@@ -561,6 +633,118 @@ def build_time_series_graph(series_df,model,conf) :
             hoverinfo='text'
         ))
 
+
+    return graph
+
+
+def build_2d_time_series_graph(series_df,model,conf) :
+
+    graph = go.Figure()
+
+    #Set title and layout
+    graph.update_layout(
+        title='<b>2D HEADWAYS TIME SERIES</b> - (In seconds)',
+        legend_title='<b>Group ids</b>',
+        xaxis = dict(
+            nticks=20,
+            zerolinecolor='darkgrey'
+        ),
+        yaxis = dict(
+            nticks=20,
+            zerolinecolor='darkgrey'
+        ),
+        legend = dict(
+            x=-0.02,
+            y=-0.05,
+            orientation='h'
+        ),
+        margin=dict(r=0, l=0, t=40, b=0),
+        hovermode='closest'
+    )
+
+
+    series_df = series_df.loc[series_df.dim == 2]
+    if series_df.shape[0] < 1 :
+        return graph
+
+    #All bus names
+    bus_names_all = ['bus' + str(i) for i in range(1,4)]
+    hw_names_all = ['hw' + str(i) + str(i+1) for i in range(1,3)]
+
+    #Min and max datetimes
+    min_time = series_df.datetime.min()
+    max_time = series_df.datetime.max()
+
+
+    #Dim threshold
+    dim = 2
+    cov_matrix = model['cov_matrix']
+    mean = model['mean']
+    m_th = math.sqrt(chi2.ppf(conf, df=dim))
+    
+    #Confidence ellipse points
+    x,y = ellipse(mean,cov_matrix,conf)
+    #Confidence ellipse
+    graph.add_trace(go.Scatter(
+        name='{}% Confidence Ellipse'.format(conf*100),
+        x=x,
+        y=y,
+        mode='lines',
+        line=dict(
+            color='red',
+            dash='dash'
+        ),
+        text='{}% Confidence Ellipse'.format(conf*100),
+        hoverinfo='text',
+        showlegend=False
+    ))
+
+    #Locate unique groups
+    unique_groups = []
+    unique_groups_df = series_df.drop_duplicates(bus_names_all)
+    for i in range(unique_groups_df.shape[0]):
+        group = [unique_groups_df.iloc[i][bus_names_all[k]] for k in range(3)]
+        unique_groups.append(group)
+
+    for group in unique_groups :
+        #Build indexing conditions
+        conds = [series_df[bus_names_all[k]] == group[k] for k in range(3)]
+        final_cond = True
+        for cond in conds :
+            final_cond &= cond
+        group_df = series_df.loc[final_cond]
+        group_df = group_df.sort_values('datetime')
+        
+        name = str(group[0])
+        for bus in group[1:] :
+            if bus != 0 :
+                name+='-'+str(bus)
+            else :
+                break
+
+        #Head point
+        graph.add_trace(go.Scatter(
+            name=name,
+            x=[group_df.hw12.iloc[-1]],
+            y=[group_df.hw23.iloc[-1]],
+            mode='markers',
+            marker=dict(size=10,color='black'),
+            showlegend=False,
+            hoverinfo='none'
+        ))
+
+        #Build group trace
+        graph.add_trace(go.Scatter(
+            name=name,
+            x=group_df.hw12,
+            y=group_df.hw23,
+            mode='lines+markers',
+            line=dict(width=3,color=colors[group_df.bus2.iloc[0]%len(colors)]),
+            text=['<b>Bus group: ' + str(name) + '</b> <br>' + \
+                    'Headways: [' + str(row.hw12) + ',' +str(row.hw23) + ']<br>' + \
+                    row.datetime for row in group_df.itertuples() ],
+            hoverinfo='text'
+        ))
     return graph
 
 
@@ -702,11 +886,15 @@ def build_anoms_table(anomalies_df) :
     
     anomalies_df = anomalies_df[['dim','group','anom_size','m_dist','datetime']]
 
-    groups_dfs = []
+    groups_dfs,n_groups = [],0
     for group in anomalies_df.group.unique():
         group_df = anomalies_df[anomalies_df.group == group]
         group_df['m_dist'] = round(group_df.m_dist.mean(),4)
         groups_dfs.append(group_df)
+        n_groups += 1
+        if n_groups >= 21 :
+            break
+
 
     #Final data for the table
     anomalies_df = pd.concat(groups_dfs)
@@ -714,8 +902,6 @@ def build_anoms_table(anomalies_df) :
 
     table = dash_table.DataTable(
         id='table',
-        filter_action='native',
-        sort_action='native',
         page_size= 7,
         style_header={
             'color':'white',
@@ -768,7 +954,7 @@ def update_title_sliders(n_intervals,n_clicks,pathname) :
     #And return all of them
     return [
         [html.H1('Line {} Real-Time Monitoring - {}'.format(line,now.time()), className='title is-3'),
-        html.H1('Time to last stop in seconds - Click buses or links to see more', className='subtitle is-4')],
+        html.H1('Time to last stop in seconds - Click buses or links for more detail', className='subtitle is-4')],
         [
             html.Label(
                 [
@@ -917,7 +1103,7 @@ def update_flat_hws(n_intervals,n_clicks,pathname) :
     graph = dcc.Graph(
         id = 'flat-hws',
         className = 'box',
-        style=dict(height='10vh'),
+        style=dict(height='11vh'),
         figure = flat_hws_graph,
         config={
             'displayModeBar': False,
@@ -963,7 +1149,7 @@ def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
 
     series = read_df('series')
     
-    line_series = series.loc[series.line == line]
+    line_series = series.loc[(series.line == line)&(series.dim == 1)]
     
     if hover_buses :
         if len(hover_buses) == 1 :
@@ -1028,7 +1214,111 @@ def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
     return [graph]
 
 
-# CALLBACK 4 - Mahalanobis Distance series
+# CALLBACK 4 - 2D Headways Time Series
+@app.callback(
+    [
+        Output('2d-time-series-hws-div','children')
+    ],
+    [
+        Input('interval-component','n_intervals'),
+        Input('update-button','n_clicks'),
+        Input('url', 'pathname'),
+        Input('flat-hws','clickData')
+    ]
+)
+def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
+    line = pathname[10:]
+
+    try :
+        if 'text' in hoverData['points'][0].keys() :
+            hover_buses = [int(hoverData['points'][0]['text'].split('<b>Bus: ')[1].split('</b>')[0])]
+        else :
+            hws_burst = read_df('hws_burst')
+
+            dest = hoverData['points'][0]['y'][3:-1]
+            x = hoverData['points'][0]['x']
+
+            direction = 1 if dest == lines_collected_dict[line]['destinations'][1] else 2
+
+            buses = hws_burst[(hws_burst.line == line) & (hws_burst.direction == direction) & \
+                                (hws_burst.busB_ttls >= x)].sort_values('busB_ttls')
+            hover_buses = [buses.busA.iloc[0],buses.busB.iloc[0]]
+    except :
+        hover_buses = None
+
+    series = read_df('series')
+    
+    line_series = series.loc[(series.line == line)&(series.dim == 2)]
+    
+    if hover_buses :
+        if len(hover_buses) == 1 :
+            line_series = line_series.loc[(line_series.bus2 == hover_buses[0])]
+        elif len(hover_buses) == 2 :
+            return [
+                html.H1('Click a bus, links not supported.',className ='title is-5')
+            ]
+
+    if line_series.shape[0] < 1 :
+        return [
+            html.H1('No 2d headways to analyse. Click a bus between two buses.',className ='title is-5')
+        ]
+
+    now = dt.now()
+    #Day type
+    if (now.weekday() >= 0) and (now.weekday() <= 4) :
+        day_type = 'LA'
+    elif now.weekday() == 5 :
+        day_type = 'SA'
+    else :
+        day_type = 'FE'
+
+    #Hour ranges to iterate over
+    #hour_ranges = [[7,11], [11,15], [15,19], [19,23]]
+    hour_ranges = [[i,i+1] for i in range(7,23)]
+
+    #Hour range
+    for h_range in hour_ranges :
+        if (now.hour >= h_range[0]) and (now.hour < h_range[1]) :
+            hour_range = str(h_range[0]) + '-' + str(h_range[1])
+            break
+        elif (h_range == hour_ranges[-1]) :
+            return [html.H1('Hour range for {}:{} not defined. Waiting till 7am.'.format(now.hour,now.minute),className='subtitle is-3')]
+    
+    try :
+        model = models_params_dict[line][day_type][hour_range]['2']
+    except :
+        return [html.H1('2D Model for this hour range not available.',className='subtitle is-3')]
+
+    #Read dict
+    while True :
+        try :
+            with open('../Data/Anomalies/hyperparams.json', 'r') as f:
+                hyperparams = json.load(f)
+            conf = hyperparams[line]['conf']
+            break
+        except :
+            continue
+
+    time_series_graph = build_2d_time_series_graph(line_series,model,conf)
+    
+    graph = dcc.Graph(
+        id = '2d-time-series-hws',
+        className = 'box',
+        style=dict(height=box_height),
+        figure = time_series_graph,
+        config={
+            'displayModeBar': False
+        }
+    )
+
+    #if n_intervals == 0 :
+        #graph = dcc.Loading(type='cube',children = [graph])
+
+    #And return all of them
+    return [graph]
+
+
+# CALLBACK 5 - Mahalanobis Distance series
 @app.callback(
     [
         Output('mdist-hws-div','children')
@@ -1109,7 +1399,7 @@ def update_mdist_series(n_intervals,n_clicks,pathname,hoverData) :
         return [html.H1('No headways to analyse. There are less than 2 buses inside each line direction.',className ='title is-5')]
 
 
-# CALLBACK 5 - Anomalies series
+# CALLBACK 6 - Anomalies series
 @app.callback(
     [
         Output('anom-hws-div','children')
@@ -1125,6 +1415,13 @@ def update_anomalies_table(n_intervals,n_clicks,pathname) :
 
     anomalies = read_df('anomalies')
     
+    if anomalies.shape[0] < 1 :
+        return [
+            html.Div(className = 'box', style=dict(height=box_height), children = [
+                html.H2('No anomalies detected yet.',className = 'title is-5')
+            ])
+        ]
+        
     line_anoms = anomalies.loc[anomalies.line == line]
 
     #Create anomalies table
