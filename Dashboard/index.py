@@ -103,8 +103,7 @@ app.index_string = '''
             {%app_entry%}
         </section>
 
-        <footer class="footer hero has-text-centered">
-                <a class='subtitle is-4 is-primary' href="https://github.com/Catedra-Cabify-ETSIT-UPM">CÁTEDRA CABIFY ETSIT UPM</a>
+        <footer height='0'>
                 {%config%}
                 {%scripts%}
                 {%renderer%}

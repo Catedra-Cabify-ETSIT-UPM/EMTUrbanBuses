@@ -45,17 +45,32 @@ colors2 = [
 ]
 
 zooms = {
-    '1': 12.7,
-    '44': 12,
-    '82': 11.6,
-    'F': 13,
-    'G': 13,
-    'U': 13,
-    '132': 11.8,
-    '133': 11.2,
-    'N2': 11.5,
-    'N6': 11.5,
+    '1': 12.6,
+    '44': 11.9,
+    '82': 11.5,
+    'F': 12.9,
+    'G': 12.9,
+    'U': 12.9,
+    '132': 11.7,
+    '133': 11.1,
+    'N2': 11.4,
+    'N6': 11.4,
 }
+
+max_ttls = {
+    '1': 2700,
+    '44': 2500,
+    '82': 2500,
+    'F': 2500,
+    'G': 2500,
+    'U': 2500,
+    '132': 2800,
+    '133': 2200,
+    'N2': 2500,
+    'N6': 2500,
+}
+
+box_height = '34vh'
 
 # WE LOAD THE DATA
 stops = pd.read_csv('../Data/Static/stops.csv')
@@ -84,29 +99,31 @@ layout = html.Div(className = '', children = [
                 html.Button('Force Update',className='button', id='update-button')
             ])
         ]),
-        html.Div(className='columns',children=[
-            html.Div(id='buses-pos-div', className='column is-3', children=[
-                dcc.Graph(
-                    id = 'map',
-                    className = 'box',
-                    style=dict(height='39vh'),
-                    figure = go.Figure()
-                )
-            ]),
-            html.Div(id='flat-hws-div', className='column is-5', children=[
+        html.Div(className='columns', children=[
+            html.Div(id='flat-hws-div',className='column',children = [
                 dcc.Graph(
                     id = 'flat-hws',
                     className = 'box',
-                    style=dict(height='39vh'),
+                    style=dict(height='10vh'),
                     figure = go.Figure(),
                     clear_on_unhover=True
+                )
+            ])
+        ]),
+        html.Div(className='columns',children=[
+            html.Div(id='buses-pos-div', className='column is-4', children=[
+                dcc.Graph(
+                    id = 'map',
+                    className = 'box',
+                    style=dict(height=box_height),
+                    figure = go.Figure()
                 )
             ]),
             html.Div(id='time-series-hws-div', className='column is-4', children=[
                 dcc.Graph(
                     id = 'time-series-hws',
                     className = 'box',
-                    style=dict(height='39vh'),
+                    style=dict(height=box_height),
                     figure = go.Figure()
                 )
             ]),
@@ -229,7 +246,7 @@ def calc_map_params(df) :
         center_y = line2.lat.mean()
         zoom = zooms[line]
     elif (df.shape[0] > 1) & (df.shape[0] < 3) :
-        zoom = min(max(3*math.log(1/(min(math.sqrt((max(lons)-min(lons))**2 + (max(lats)-min(lats))**2),1))),zooms[line]),13.5)
+        zoom = min(max(3*math.log(1/max((min(math.sqrt((max(lons)-min(lons))**2 + (max(lats)-min(lats))**2),1)),0.0001)),zooms[line]),13.5)
     else :
         zoom = 14
     return df,center_x,center_y,zoom
@@ -273,7 +290,7 @@ def build_map(line_df) :
             ),
             pitch=0,
             zoom=zoom,
-            style=style
+            style='streets'
         )
     )
 
@@ -328,8 +345,8 @@ def build_map(line_df) :
             mode='markers',
             marker=go.scattermapbox.Marker(
                 size=25,
-                color=color,
-                opacity=0.95
+                opacity=1,
+                color=color
             ),
             text=[bus.bus],
             hoverinfo='text'
@@ -352,18 +369,15 @@ def build_graph(line_hws) :
 
     #Set title and layout
     graph.update_layout(
-        title='<b>HEADWAYS</b> - (Hover buses or links to see more)',
-        legend_title='<b>Bus ids</b>',
         xaxis = dict(
-            title_text = 'Seconds remaining to destination',
-            nticks=20
+            nticks=30
         ),
         yaxis = dict(
             type='category',
             showgrid=False, 
             zeroline=False
         ),
-        margin=dict(r=0, l=0, t=40, b=0),
+        margin=dict(r=0, l=0, t=0, b=0),
         hovermode='closest'
     )
 
@@ -383,14 +397,14 @@ def build_graph(line_hws) :
         max_dist1 = hw1.busB_ttls.max()
         #Add trace
         for i in range(hw1.shape[0]-1):
-            N,X = 10,[hw1.iloc[i].busB_ttls,hw1.iloc[i].busB_ttls + hw1.iloc[i+1].headway]
+            N,X = 50,[hw1.iloc[i].busB_ttls,hw1.iloc[i].busB_ttls + hw1.iloc[i+1].headway]
             X_new = []
             for k in range(N+1):
                 X_new.append(X[0]+(X[1]-X[0])*k/N)
             
             graph.add_trace(go.Scatter(
                 x=X_new,
-                y=[('<b>'+dest1) for i in range(len(X_new))],
+                y=[('<b>'+dest1+' ') for i in range(len(X_new))],
                 mode='lines',
                 line=dict(width=3, color=colors2[(hw1.iloc[i+1].busA+hw1.iloc[i+1].busB)%len(colors2)]),
                 showlegend=False,
@@ -405,14 +419,14 @@ def build_graph(line_hws) :
         max_dist2 = hw2.busB_ttls.max()
         #Add trace
         for i in range(hw2.shape[0]-1):
-            N,X = 10,[hw2.iloc[i].busB_ttls,hw2.iloc[i].busB_ttls + hw2.iloc[i+1].headway]
+            N,X = 50,[hw2.iloc[i].busB_ttls,hw2.iloc[i].busB_ttls + hw2.iloc[i+1].headway]
             X_new = []
             for k in range(N+1):
                 X_new.append(X[0]+(X[1]-X[0])*k/N)
             
             graph.add_trace(go.Scatter(
                 x=X_new,
-                y=[('<b>'+dest2) for i in range(len(X_new))],
+                y=[('<b>'+dest2+' ') for i in range(len(X_new))],
                 mode='lines',
                 line=dict(width=3, color=colors2[(hw2.iloc[i+1].busA+hw2.iloc[i+1].busB)%len(colors2)]),
                 showlegend=False,
@@ -436,14 +450,19 @@ def build_graph(line_hws) :
             mode='markers',
             name=bus.busB,
             x=[bus.busB_ttls],
-            y=['<b>'+dest],
+            y=['<b>'+dest+' '],
             marker=dict(
                 size=25,
-                color=color
+                color=color,
+                line=dict(
+                    color='black',
+                    width=1.5
+                )
             ),
             text=['<b>Bus: ' + str(bus.busB) + '</b> <br>' + str(bus.headway)+'s to next bus <br>' + str(bus.busB_ttls) + 's to last stop'],
             hoverinfo='text'
         ))
+    graph.update_layout(xaxis_range=(0,max_ttls[line]))
 
     #Finally we return the graph
     return graph
@@ -463,7 +482,7 @@ def build_time_series_graph(series_df,model,conf) :
         ),
         legend = dict(
             x=-0.1,
-            y=-0.075,
+            y=-0.05,
             orientation='h'
         ),
         margin=dict(r=0, l=0, t=40, b=0),
@@ -535,7 +554,11 @@ def build_time_series_graph(series_df,model,conf) :
             x=group_df.datetime,
             y=group_df.hw12,
             mode='lines+markers',
-            line=dict(width=3,color=colors2[(group_df.bus1.iloc[0]+group_df.bus2.iloc[0])%len(colors2)])
+            line=dict(width=3,color=colors2[(group_df.bus1.iloc[0]+group_df.bus2.iloc[0])%len(colors2)]),
+            text=['<b>Bus group: ' + str(name) + '</b> <br>' + \
+                    'Headway: ' + str(row.hw12)+'s<br>' + \
+                    row.datetime for row in group_df.itertuples() ],
+            hoverinfo='text'
         ))
 
     return graph
@@ -628,6 +651,13 @@ def build_m_dist_graph(series_df,line) :
                 name+='-'+str(bus)
             else :
                 break
+        
+        hw_values = []
+        for index,row in group_df.iterrows():
+            hw_value = str(row.hw12)
+            for hw_name in hw_names_all[1:dim] :
+                hw_value += ',' + str(row[hw_name])
+            hw_values.append(hw_value)
 
         #Build group trace
         graph.add_trace(go.Scatter(
@@ -635,7 +665,11 @@ def build_m_dist_graph(series_df,line) :
             x=group_df.datetime,
             y=group_df.m_dist,
             mode='lines+markers',
-            line=dict(width=3, color=color)
+            line=dict(width=3, color=color),
+            text=['<b>Bus group: ' + str(name) + '</b> <br>' + \
+                    'Headways: [' + hw_values[i] + ']<br>' + \
+                    group_df.iloc[i].datetime for i in range(group_df.shape[0]) ],
+            hoverinfo='text'
         ))
 
     return graph
@@ -682,7 +716,7 @@ def build_anoms_table(anomalies_df) :
         id='table',
         filter_action='native',
         sort_action='native',
-        page_size= 10,
+        page_size= 7,
         style_header={
             'color':'white',
             'backgroundColor': '#6A5ACD'
@@ -733,7 +767,8 @@ def update_title_sliders(n_intervals,n_clicks,pathname) :
 
     #And return all of them
     return [
-        [html.H1('Line {} Real-Time Monitoring - {}'.format(line,now.time()), className='title is-3')],
+        [html.H1('Line {} Real-Time Monitoring - {}'.format(line,now.time()), className='title is-3'),
+        html.H1('Time to last stop in seconds - Click buses or links to see more', className='subtitle is-4')],
         [
             html.Label(
                 [
@@ -804,7 +839,7 @@ def update_hyperparams(conf,size_th,pathname) :
         Input('interval-component','n_intervals'),
         Input('update-button','n_clicks'),
         Input('url', 'pathname'),
-        Input('flat-hws','hoverData')
+        Input('flat-hws','clickData')
     ]
 )
 def update_buses_position(n_intervals,n_clicks,pathname,hoverData) :
@@ -817,7 +852,7 @@ def update_buses_position(n_intervals,n_clicks,pathname,hoverData) :
         else :
             hws_burst = read_df('hws_burst')
 
-            dest = hoverData['points'][0]['y'][3:]
+            dest = hoverData['points'][0]['y'][3:-1]
             x = hoverData['points'][0]['x']
 
             direction = 1 if dest == lines_collected_dict[line]['destinations'][1] else 2
@@ -849,7 +884,7 @@ def update_buses_position(n_intervals,n_clicks,pathname,hoverData) :
         dcc.Graph(
             id = 'map',
             className = 'box',
-            style=dict(height='39vh'),
+            style=dict(height=box_height),
             figure = new_map,
             config={
                 'displayModeBar': False
@@ -882,7 +917,7 @@ def update_flat_hws(n_intervals,n_clicks,pathname) :
     graph = dcc.Graph(
         id = 'flat-hws',
         className = 'box',
-        style=dict(height='39vh'),
+        style=dict(height='10vh'),
         figure = flat_hws_graph,
         config={
             'displayModeBar': False,
@@ -903,7 +938,7 @@ def update_flat_hws(n_intervals,n_clicks,pathname) :
         Input('interval-component','n_intervals'),
         Input('update-button','n_clicks'),
         Input('url', 'pathname'),
-        Input('flat-hws','hoverData')
+        Input('flat-hws','clickData')
     ]
 )
 def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
@@ -915,7 +950,7 @@ def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
         else :
             hws_burst = read_df('hws_burst')
 
-            dest = hoverData['points'][0]['y'][3:]
+            dest = hoverData['points'][0]['y'][3:-1]
             x = hoverData['points'][0]['x']
 
             direction = 1 if dest == lines_collected_dict[line]['destinations'][1] else 2
@@ -960,7 +995,7 @@ def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
             hour_range = str(h_range[0]) + '-' + str(h_range[1])
             break
         elif (h_range == hour_ranges[-1]) :
-            return [html.H1('Hour range for {}:{} not defined. Waiting till 7am'.format(now.hour,now.minute),className='subtitle is-3')]
+            return [html.H1('Hour range for {}:{} not defined. Waiting till 7am.'.format(now.hour,now.minute),className='subtitle is-3')]
     
     model = models_params_dict[line][day_type][hour_range]['1']
 
@@ -979,7 +1014,7 @@ def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
     graph = dcc.Graph(
         id = 'time-series-hws',
         className = 'box',
-        style=dict(height='39vh'),
+        style=dict(height=box_height),
         figure = time_series_graph,
         config={
             'displayModeBar': False
@@ -1001,16 +1036,53 @@ def update_time_series_hws(n_intervals,n_clicks,pathname,hoverData) :
     [
         Input('interval-component','n_intervals'),
         Input('update-button','n_clicks'),
-        Input('url', 'pathname')
+        Input('url', 'pathname'),
+        Input('flat-hws','clickData')
     ]
 )
-def update_mdist_series(n_intervals,n_clicks,pathname) :
+def update_mdist_series(n_intervals,n_clicks,pathname,hoverData) :
     try :
         line = pathname[10:]
+
+        
+        try :
+            if 'text' in hoverData['points'][0].keys() :
+                hover_buses = [int(hoverData['points'][0]['text'].split('<b>Bus: ')[1].split('</b>')[0])]
+            else :
+                hws_burst = read_df('hws_burst')
+
+                dest = hoverData['points'][0]['y'][3:-1]
+                x = hoverData['points'][0]['x']
+
+                direction = 1 if dest == lines_collected_dict[line]['destinations'][1] else 2
+
+                buses = hws_burst[(hws_burst.line == line) & (hws_burst.direction == direction) & \
+                                    (hws_burst.busB_ttls >= x)].sort_values('busB_ttls')
+                hover_buses = [buses.busA.iloc[0],buses.busB.iloc[0]]
+        except :
+            hover_buses = None
 
         series = read_df('series')
         
         line_series = series.loc[series.line == line]
+        
+        if hover_buses :
+            if len(hover_buses) == 1 :
+                line_series = line_series.loc[(line_series.bus1 == hover_buses[0]) | (line_series.bus2 == hover_buses[0]) | \
+                                            (line_series.bus3 == hover_buses[0]) | (line_series.bus4 == hover_buses[0]) | \
+                                            (line_series.bus5 == hover_buses[0]) | (line_series.bus6 == hover_buses[0]) | \
+                                            (line_series.bus7 == hover_buses[0]) | (line_series.bus8 == hover_buses[0]) | \
+                                            (line_series.bus9 == hover_buses[0])]
+
+            elif len(hover_buses) == 2 :
+                line_series = line_series.loc[((line_series.bus1 == hover_buses[0]) & (line_series.bus2 == hover_buses[1])) | \
+                                            ((line_series.bus2 == hover_buses[0]) & (line_series.bus3 == hover_buses[1])) | \
+                                            ((line_series.bus3 == hover_buses[0]) & (line_series.bus4 == hover_buses[1])) | \
+                                            ((line_series.bus4 == hover_buses[0]) & (line_series.bus5 == hover_buses[1])) | \
+                                            ((line_series.bus5 == hover_buses[0]) & (line_series.bus6 == hover_buses[1])) | \
+                                            ((line_series.bus6 == hover_buses[0]) & (line_series.bus7 == hover_buses[1])) | \
+                                            ((line_series.bus7 == hover_buses[0]) & (line_series.bus8 == hover_buses[1])) | \
+                                            ((line_series.bus8 == hover_buses[0]) & (line_series.bus9 == hover_buses[1]))]
 
         if line_series.shape[0] < 1 :
             return [html.H1('No headways to analyse. There are less than 2 buses inside each line direction.',className ='title is-5')]
@@ -1021,7 +1093,7 @@ def update_mdist_series(n_intervals,n_clicks,pathname) :
         graph = dcc.Graph(
             id = 'mdist-hws',
             className = 'box',
-            style=dict(height='39vh'),
+            style=dict(height=box_height),
             figure = m_dist_graph,
             config={
                 'displayModeBar': False
@@ -1060,7 +1132,7 @@ def update_anomalies_table(n_intervals,n_clicks,pathname) :
 
     #And return all of them
     return [
-        html.Div(className = 'box', style=dict(height='39vh'), children = [
+        html.Div(className = 'box', style=dict(height=box_height), children = [
             html.H2('DETECTED ANOMALIES',className = 'title is-5'),
             anoms_table
         ])

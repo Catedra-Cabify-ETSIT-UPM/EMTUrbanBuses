@@ -32,6 +32,7 @@ with open('../Data/Static/line_stops_dict.json', 'r') as f:
 
 night_lines = [str(i) for i in range(500,600)]
 rank_params = ['pagerank','deg_centrality','in_centrality','out_centrality']
+box_height = '75vh'
 
 #Available colors
 colors = [
@@ -217,7 +218,7 @@ def build_bar_graph(top_stops,selected_param,axis_type) :
         margin=dict(r=0, l=0, t=30, b=0),
         showlegend=False,
         xaxis=dict(
-            tickfont=dict(size=10)
+            tickfont=dict(size=12)
         ),
         yaxis=dict(
             title=selected_param,
@@ -486,17 +487,17 @@ def update_lines_graph(lineIds):
         if len(stops_of_lines)==0 :
             return [
                 html.H1('Please select one or multiple line ids from the list',className='subtitle is-3'),
-                dcc.Graph(id = 'lines-map',figure = go.Figure(),style={'display':'none','height':'60vh'}, clear_on_unhover=True, config={'displayModeBar': False})
+                dcc.Graph(id = 'lines-map',figure = go.Figure(),style={'display':'none','height':box_height}, clear_on_unhover=True, config={'displayModeBar': False})
             ]
         else :
             return [
-                dcc.Graph(id = 'lines-map',style=dict(height='60vh'), figure = lines_map, clear_on_unhover=True, config={'displayModeBar': False})
+                dcc.Graph(id = 'lines-map',style=dict(height=box_height), figure = lines_map, clear_on_unhover=True, config={'displayModeBar': False})
             ]
     except :
         #If there is an error we ask for a valid line id
         return [
             html.H1('Please select one or multiple line ids from the list',className='subtitle is-3'),
-            dcc.Graph(id = 'lines-map',figure = go.Figure(),style={'display':'none','height':'60vh'}, clear_on_unhover=True, config={'displayModeBar': False})
+            dcc.Graph(id = 'lines-map',figure = go.Figure(),style={'display':'none','height':box_height}, clear_on_unhover=True, config={'displayModeBar': False})
         ]
 
 # CALLBACK 2 - Requested Lines Net Graph
@@ -522,7 +523,7 @@ def update_lines_graph(lineIds):
     
 
         #Gen graph
-        net_graph = dcc.Graph(id = 'net-graph',style=dict(height='60vh'),figure = gen_graph(G), clear_on_unhover=True, config={'displayModeBar': False})
+        net_graph = dcc.Graph(id = 'net-graph',style=dict(height=box_height),figure = gen_graph(G), clear_on_unhover=True, config={'displayModeBar': False})
 
         return [
             net_graph
@@ -531,7 +532,7 @@ def update_lines_graph(lineIds):
         #If there is an error we ask for a valid line id
         return [
             html.H1('Please select one or multiple line ids from the list',className='subtitle is-3'),
-            dcc.Graph(id = 'net-graph',figure = go.Figure(),style={'display':'none','height':'60vh'}, clear_on_unhover=True, config={'displayModeBar': False})
+            dcc.Graph(id = 'net-graph',figure = go.Figure(),style={'display':'none','height':box_height}, clear_on_unhover=True, config={'displayModeBar': False})
         ]
 
 
@@ -597,21 +598,21 @@ def update_ranked_stops(lineIds,selected_param,axis_type):
             #If there is an error we ask for a valid line id
             return [
                 html.H1('Please select one or multiple line ids from the list',className='subtitle is-3'),
-                dcc.Graph(id = 'stops-rank-graph', figure = go.Figure(), style={'display':'none','height':'60vh'}, clear_on_unhover=True, config={'displayModeBar': False})
+                dcc.Graph(id = 'stops-rank-graph', figure = go.Figure(), style={'display':'none','height':box_height}, clear_on_unhover=True, config={'displayModeBar': False})
             ]
 
         #Gen bar graph
         top_stops_graph = build_bar_graph(stops_pr,selected_param,axis_type)
 
         return [
-            dcc.Graph(id = 'stops-rank-graph',style=dict(height='60vh'),figure = top_stops_graph, clear_on_unhover=True, config={'displayModeBar': False})
+            dcc.Graph(id = 'stops-rank-graph',style=dict(height=box_height),figure = top_stops_graph, clear_on_unhover=True, config={'displayModeBar': False})
         ]
 
     except:
         #If there is an error we ask for a valid line id
         return [
             html.H1('Please select one or multiple line ids from the list',className='subtitle is-3'),
-            dcc.Graph(id = 'stops-rank-graph', figure = go.Figure(), style={'display':'none','height':'60vh'}, clear_on_unhover=True, config={'displayModeBar': False})
+            dcc.Graph(id = 'stops-rank-graph', figure = go.Figure(), style={'display':'none','height':box_height}, clear_on_unhover=True, config={'displayModeBar': False})
         ]
 
 
@@ -713,7 +714,9 @@ def update_hovered_stop_info(lineIds,clickData1,clickData2,clickData3) :
                 size=20,
                 color='#2F4F4F',
                 opacity=0.9
-            )
+            ),
+            text=['<b>[' + str(stop.id) + '] ' + stop.stop_name +  '</b>'],
+            hoverinfo='text'
         ))
 
         return [

@@ -163,33 +163,40 @@ def process_day_df(line_df,date) :
                     stops_df = stops_df.loc[((stops_df.destination == dest1) & (~stops_df.bus.isin(buses_out1))) | \
                                             ((stops_df.destination == dest2) & (~stops_df.bus.isin(buses_out2))) ]
 
+                    #Update appearance order lists
                     stops_df_dest1 = stops_df[stops_df.destination == dest1].sort_values(by=['estimateArrive'])
                     if stops_df_dest1.shape[0] > 0 :  
                         buses_dest1 = stops_df_dest1.bus.tolist()
                         for i in range(len(buses_dest1)):
                             if buses_dest1[i] not in bus_cons_ap1.keys() :
                                 bus_cons_ap1[buses_dest1[i]] = 0
+                            if  buses_dest1[i] not in last_bus_ap1.keys() :
+                                last_bus_ap1[buses_dest1[i]] = 20
 
-                            if bus_cons_ap1[buses_dest1[i]] > 3 :
+                            if bus_cons_ap1[buses_dest1[i]] > 1 :
                                 if (buses_dest1[i] not in ap_order_dir1) : 
                                     #Append to apearance list
                                     ap_order_dir1.append(buses_dest1[i])
                                     bus_cons_ap1[buses_dest1[i]] = 0
-                                elif last_bus_ap1[buses_dest1[i]] > 10 :
+                                elif last_bus_ap1[buses_dest1[i]] > 1 :
                                     for k in range(len(ap_order_dir1)) :
                                         if buses_dest1[i] == ap_order_dir1[k] :
                                             #Put it in the last position
                                             ap_order_dir1.append(ap_order_dir1.pop(k))
                                             bus_cons_ap1[buses_dest1[i]] = 0
                                             break
-                            
                                 last_bus_ap1[buses_dest1[i]] = 0
+                            
                             bus_cons_ap1[buses_dest1[i]] += 1
+
                         #Update times without appering
                         for bus in last_bus_ap1.keys():
                             if bus not in buses_dest1 :
                                 last_bus_ap1[bus] += 1
-
+                                bus_cons_ap1[bus] = 0
+                                if last_bus_ap1[bus] > 1 :
+                                    if bus in ap_order_dir1 :
+                                        ap_order_dir1.remove(bus)
                     
                     stops_df_dest2 = stops_df[stops_df.destination == dest2].sort_values(by=['estimateArrive'])
                     if stops_df_dest2.shape[0] > 0 :  
@@ -197,13 +204,15 @@ def process_day_df(line_df,date) :
                         for i in range(len(buses_dest2)):
                             if buses_dest2[i] not in bus_cons_ap2.keys() :
                                 bus_cons_ap2[buses_dest2[i]] = 0
-                                
-                            if bus_cons_ap2[buses_dest2[i]] > 3 :
+                            if  buses_dest2[i] not in last_bus_ap2.keys() :
+                                last_bus_ap2[buses_dest2[i]] = 20
+
+                            if bus_cons_ap2[buses_dest2[i]] > 1 :
                                 if (buses_dest2[i] not in ap_order_dir2) : 
                                     #Append to apearance list
                                     ap_order_dir2.append(buses_dest2[i])
                                     bus_cons_ap2[buses_dest2[i]] = 0
-                                elif last_bus_ap2[buses_dest2[i]] > 4 :
+                                elif last_bus_ap2[buses_dest2[i]] > 1 :
                                     for k in range(len(ap_order_dir2)) :
                                         if buses_dest2[i] == ap_order_dir2[k] :
                                             #Put it in the last position
@@ -211,12 +220,17 @@ def process_day_df(line_df,date) :
                                             bus_cons_ap2[buses_dest2[i]] = 0
                                             break
                                 last_bus_ap2[buses_dest2[i]] = 0
+
                             bus_cons_ap2[buses_dest2[i]] += 1
 
                         #Update times without appering
                         for bus in last_bus_ap2.keys():
                             if bus not in buses_dest2 :
                                 last_bus_ap2[bus] += 1
+                                bus_cons_ap2[bus] = 0
+                                if last_bus_ap2[bus] > 1 :
+                                    if bus in ap_order_dir2 :
+                                        ap_order_dir2.remove(bus)
 
                     #Reorder df according to appearance list
                     rows = []
