@@ -79,7 +79,7 @@ def get_model_params(df,dim) :
         mean = [col.mean() for col in cols]
     else :
         mean = cols[0].mean()
-
+        
     return cov_matrix,mean
 
 
@@ -124,6 +124,9 @@ def calc_line_params(df,line,day_types,hour_ranges,min_points) :
 
                 models_params_dict[line][day_type][str(hour_range[0])+'-'+str(hour_range[1])][dim]['cov_matrix'] = cov_matrix.tolist()
                 models_params_dict[line][day_type][str(hour_range[0])+'-'+str(hour_range[1])][dim]['mean'] = mean
+            
+            print('\nModel params for line {}-(Day type : {}, Hour range: {}) with max_dim = {} processed.\n'.format(line,day_type,str(hour_range[0])+'-'+str(hour_range[1]),max_dim))
+
     return models_params_dict
 
 
@@ -164,7 +167,7 @@ def main():
             'direction': 'uint16',
             'busA': 'uint16',
             'busB': 'uint16',
-            'headway':'uint16',
+            'headway':'int16',
             'busB_ttls':'uint16'
         }
     )[['line','direction','datetime','hw_pos','busA','busB','headway','busB_ttls']]
