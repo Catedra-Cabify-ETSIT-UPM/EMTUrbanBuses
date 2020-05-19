@@ -244,7 +244,7 @@ def process_headways(int_df,day_type,hour_range,ap_order_dict) :
     for bus in ap_order_dir1 :
         bus_df = stops_df_dest1[stops_df_dest1.bus == bus]
         if bus_df.shape[0] > 0 :
-            if (last_ttls1 > bus_df.iloc[0].estimateArrive) & (TH+1 < bus_cons_ap1[last_bus1] < TH+4) :
+            if (last_ttls1 > bus_df.iloc[0].estimateArrive) & (TH+1 < bus_cons_ap1[bus] < TH+4) :
                 rows.pop(-1)
                 rows.append(bus_df.iloc[0])
 
@@ -260,7 +260,7 @@ def process_headways(int_df,day_type,hour_range,ap_order_dict) :
     for bus in ap_order_dir2 :
         bus_df = stops_df_dest2[stops_df_dest2.bus == bus]
         if bus_df.shape[0] > 0 :
-            if (last_ttls2 > bus_df.iloc[0].estimateArrive) & (TH+1 < bus_cons_ap2[last_bus2] < TH+4) :
+            if (last_ttls2 > bus_df.iloc[0].estimateArrive) & (TH+1 < bus_cons_ap2[bus] < TH+4) :
                 rows.pop(-1)
                 rows.append(bus_df.iloc[0])
                 
