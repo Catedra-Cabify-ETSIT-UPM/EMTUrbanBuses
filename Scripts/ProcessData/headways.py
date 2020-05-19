@@ -156,6 +156,8 @@ def process_day_df(line_df,date) :
                                             ((stops_df.destination == dest2) & (~stops_df.bus.isin(buses_out2))) ]
 
                     #Update appearance order lists
+                    TH = 3
+
                     stops_df_dest1 = stops_df[stops_df.destination == dest1].sort_values(by=['estimateArrive'])
                     if stops_df_dest1.shape[0] > 0 :  
                         buses_dest1 = stops_df_dest1.bus.tolist()
@@ -165,12 +167,12 @@ def process_day_df(line_df,date) :
                             if  buses_dest1[i] not in last_bus_ap1.keys() :
                                 last_bus_ap1[buses_dest1[i]] = 0
 
-                            if bus_cons_ap1[buses_dest1[i]] > 1 :
+                            if bus_cons_ap1[buses_dest1[i]] > TH :
                                 if (buses_dest1[i] not in ap_order_dir1) : 
                                     #Append to apearance list
                                     ap_order_dir1.append(buses_dest1[i])
 
-                                elif last_bus_ap1[buses_dest1[i]] > 1 :
+                                elif last_bus_ap1[buses_dest1[i]] > TH :
                                     for k in range(len(ap_order_dir1)) :
                                         if buses_dest1[i] == ap_order_dir1[k] :
                                             #Put it in the last position
@@ -182,7 +184,7 @@ def process_day_df(line_df,date) :
                             if bus not in buses_dest1 :
                                 last_bus_ap1[bus] += 1
                                 bus_cons_ap1[bus] = 0
-                                if last_bus_ap1[bus] > 1 :
+                                if last_bus_ap1[bus] > TH :
                                     if bus in ap_order_dir1 :
                                         ap_order_dir1.remove(bus)
                             else :
@@ -198,12 +200,12 @@ def process_day_df(line_df,date) :
                             if  buses_dest2[i] not in last_bus_ap2.keys() :
                                 last_bus_ap2[buses_dest2[i]] = 0
 
-                            if bus_cons_ap2[buses_dest2[i]] > 1 :
+                            if bus_cons_ap2[buses_dest2[i]] > TH :
                                 if (buses_dest2[i] not in ap_order_dir2) : 
                                     #Append to apearance list
                                     ap_order_dir2.append(buses_dest2[i])
 
-                                elif last_bus_ap2[buses_dest2[i]] > 1 :
+                                elif last_bus_ap2[buses_dest2[i]] > TH :
                                     for k in range(len(ap_order_dir2)) :
                                         if buses_dest2[i] == ap_order_dir2[k] :
                                             #Put it in the last position
@@ -215,7 +217,7 @@ def process_day_df(line_df,date) :
                             if bus not in buses_dest2 :
                                 last_bus_ap2[bus] += 1
                                 bus_cons_ap2[bus] = 0
-                                if last_bus_ap2[bus] > 1 :
+                                if last_bus_ap2[bus] > TH :
                                     if bus in ap_order_dir2 :
                                         ap_order_dir2.remove(bus)
                             else :
@@ -227,14 +229,14 @@ def process_day_df(line_df,date) :
                     for bus in ap_order_dir1 :
                         bus_df = stops_df_dest1[stops_df_dest1.bus == bus]
                         if bus_df.shape[0] > 0 :
-                            if (last_ttls1 > bus_df.iloc[0].estimateArrive) & (bus_cons_ap1[bus] == 3) :
+                            if (last_ttls1 > bus_df.iloc[0].estimateArrive) & (bus_cons_ap1[bus] == TH+2) :
                                 popped_row = rows.pop(-1)
                                 rows.append(bus_df.iloc[0])
                                 rows.append(popped_row)
 
                                 ap_order_dir1.remove(last_bus1)
-                                bus_cons_ap1[last_bus1] = 2
-                                last_bus_ap1[last_bus1] = 2
+                                bus_cons_ap1[last_bus1] = TH + 1
+                                last_bus_ap1[last_bus1] = TH + 1
                                 break
                             else :
                                 rows.append(bus_df.iloc[0])
@@ -244,14 +246,14 @@ def process_day_df(line_df,date) :
                     for bus in ap_order_dir2 :
                         bus_df = stops_df_dest2[stops_df_dest2.bus == bus]
                         if bus_df.shape[0] > 0 :
-                            if (last_ttls2 > bus_df.iloc[0].estimateArrive) & (bus_cons_ap2[bus] == 3) :
+                            if (last_ttls2 > bus_df.iloc[0].estimateArrive) & (bus_cons_ap2[bus] == TH+2) :
                                 popped_row = rows.pop(-1)
                                 rows.append(bus_df.iloc[0])
                                 rows.append(popped_row)
-
+                                
                                 ap_order_dir2.remove(last_bus2)
-                                bus_cons_ap2[last_bus2] = 2
-                                last_bus_ap2[last_bus2] = 2
+                                bus_cons_ap2[last_bus2] = TH + 1
+                                last_bus_ap2[last_bus2] = TH + 1
                                 break
                             else :
                                 rows.append(bus_df.iloc[0])
