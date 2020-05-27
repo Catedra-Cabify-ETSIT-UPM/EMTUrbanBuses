@@ -773,6 +773,11 @@ def build_m_dist_graph(series_df,line) :
             title_text = 'Mahalanobis Distance',
             nticks=20
         ),
+        legend = dict(
+            x=-0.02,
+            y=-0.05,
+            orientation='h'
+        ),
         margin=dict(r=0, l=0, t=40, b=0),
         hovermode='closest'
     )
