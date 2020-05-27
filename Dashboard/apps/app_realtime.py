@@ -72,7 +72,7 @@ max_ttls = {
     'N6': 2500,
 }
 
-box_height = '34vh'
+box_height = '33.3vh'
 
 # WE LOAD THE DATA
 stops = pd.read_csv('../Data/Static/stops.csv')
@@ -88,14 +88,14 @@ layout = html.Div(className = '', children = [
     html.Div(className='box', children = [
         html.Div(className='columns', children=[
             html.Div(id='tab-title', className='column'),
-            html.Div(id='conf',className='column', style=dict(height='7vh'), children=[
+            html.Div(id='conf',className='column', style=dict(height='4vh'), children=[
                 dcc.Input(id="conf-slider", type="text", value=0, style={'display':'none'})
             ]),
-            html.Div(id='size-th',className='column', style=dict(height='7vh'), children=[
+            html.Div(id='size-th',className='column', style=dict(height='4vh'), children=[
                 dcc.Input(id="size-th-slider", type="text", value=0, style={'display':'none'})
             ]),
-            html.Div(className='column is-narrow', style=dict(height='7vh',width='7vh'),children=[
-                dcc.Loading(id='new-interval-loading', type='dot', style=dict(height='7vh',width='7vh')),
+            html.Div(className='column is-narrow', style=dict(height='4vh',width='7vh'),children=[
+                dcc.Loading(id='new-interval-loading', type='dot', style=dict(height='4vh',width='7vh')),
             ]),
             html.Div(className='column is-narrow', style=dict(height='0.5vh'), children=[
                 html.Button('Force Update',className='button', id='update-button')
@@ -953,8 +953,7 @@ def update_title_sliders(n_intervals,n_clicks,pathname) :
 
     #And return all of them
     return [
-        [html.H1('Line {} Monitoring - {}'.format(line,now.time()), className='title is-4'),
-        html.H1('Click buses or links for more detail', className='subtitle is-5')],
+        [html.H1('Line {} ({})'.format(line,now.time()), className='title is-3')],
         [
             html.Label(
                 [
@@ -1103,7 +1102,7 @@ def update_flat_hws(n_intervals,n_clicks,pathname) :
     graph = dcc.Graph(
         id = 'flat-hws',
         className = 'box',
-        style=dict(height='11vh'),
+        style=dict(height='15vh'),
         figure = flat_hws_graph,
         config={
             'displayModeBar': False,
