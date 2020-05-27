@@ -902,13 +902,13 @@ def build_anoms_table(anomalies_df) :
 
     table = dash_table.DataTable(
         id='table',
-        page_size= 7,
+        page_size= 5,
         style_header={
             'color':'white',
             'backgroundColor': '#6A5ACD'
         },
         style_cell={
-            'padding': '3px',
+            'padding': '2px',
             'width': 'auto',
             'textAlign': 'center',
             'overflow': 'hidden',
@@ -953,8 +953,8 @@ def update_title_sliders(n_intervals,n_clicks,pathname) :
 
     #And return all of them
     return [
-        [html.H1('Line {} Real-Time Monitoring - {}'.format(line,now.time()), className='title is-3'),
-        html.H1('Time to last stop in seconds - Click buses or links for more detail', className='subtitle is-4')],
+        [html.H1('Line {} Monitoring - {}'.format(line,now.time()), className='title is-4'),
+        html.H1('Click buses or links for more detail', className='subtitle is-5')],
         [
             html.Label(
                 [
