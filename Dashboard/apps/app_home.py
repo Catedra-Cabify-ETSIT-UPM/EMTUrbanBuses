@@ -32,7 +32,7 @@ with open('../Data/Static/line_stops_dict.json', 'r') as f:
 
 night_lines = [str(i) for i in range(500,600)]
 rank_params = ['pagerank','deg_centrality','in_centrality','out_centrality']
-box_height = '75vh'
+box_height = '60vh'
 
 #Available colors
 colors = [

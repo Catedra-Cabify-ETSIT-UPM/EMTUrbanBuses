@@ -106,7 +106,7 @@ layout = html.Div(className = '', children = [
                 dcc.Graph(
                     id = 'flat-hws',
                     className = 'box',
-                    style=dict(height='10vh'),
+                    style=dict(height='15vh'),
                     figure = go.Figure(),
                     clear_on_unhover=True
                 )
@@ -902,10 +902,16 @@ def build_anoms_table(anomalies_df) :
 
     table = dash_table.DataTable(
         id='table',
+        filter_action="native",
+        sort_action="native",
+        sort_mode='multi',
+        page_action='native',
+        page_current=0,
         page_size= 5,
         style_header={
-            'color':'white',
-            'backgroundColor': '#6A5ACD'
+            'backgroundColor': 'rgb(50, 50, 50)',
+            'color': 'white',
+            'fontWeight': 'bold'
         },
         style_cell={
             'padding': '2px',
@@ -914,6 +920,7 @@ def build_anoms_table(anomalies_df) :
             'overflow': 'hidden',
             'textOverflow': 'ellipsis',
         },
+        style_table={'overflowX': 'auto'},
         columns=[{"name": i, "id": i} for i in anomalies_df.columns],
         data=anomalies_df.to_dict('records')
     )
@@ -1102,7 +1109,7 @@ def update_flat_hws(n_intervals,n_clicks,pathname) :
     graph = dcc.Graph(
         id = 'flat-hws',
         className = 'box',
-        style=dict(height='15vh'),
+        style=dict(height='15vh',width='95vh'),
         figure = flat_hws_graph,
         config={
             'displayModeBar': False,
