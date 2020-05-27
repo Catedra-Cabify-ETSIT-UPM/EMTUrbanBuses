@@ -405,9 +405,12 @@ def process_hws_ndim_mh_dist(lines,day_type,hour_range,burst_df,ap_order_dict) :
         line_df = burst_df.loc[burst_df.line == line]
 
         #Calculate headways and append them
-        headways,ap_order_dict = process_headways(line_df,day_type,hour_range,ap_order_dict)
-        headways['line'] = line
-        headways_dfs.append(headways)
+        if line_df.shape[0] > 0 :
+            headways,ap_order_dict = process_headways(line_df,day_type,hour_range,ap_order_dict)
+            headways['line'] = line
+            headways_dfs.append(headways)
+        else :
+            continue
         
         if headways.shape[0] < 1 :
             continue
