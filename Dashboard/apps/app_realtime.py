@@ -1109,7 +1109,7 @@ def update_flat_hws(n_intervals,n_clicks,pathname) :
     graph = dcc.Graph(
         id = 'flat-hws',
         className = 'box',
-        style=dict(height='15vh',width='95vh'),
+        style=dict(height='15vh'),
         figure = flat_hws_graph,
         config={
             'displayModeBar': False,
